@@ -1,4 +1,4 @@
-package template
+package metadata
 
 import (
 	"encoding/json"
@@ -42,19 +42,19 @@ type MetaStructure struct {
 func processMetaFiles(filePaths []string) ([]*MetaStructure, error) {
 	var dataStructures []*MetaStructure
 	for _, filePath := range filePaths {
+		var data MetaStructure
+		data.Path = filepath.Base(filePath)
 		content, err := os.ReadFile(filePath)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error reading file %q: %v\n", filePath, err)
 			continue
 		}
 
-		var data MetaStructure
 		err = json.Unmarshal(content, &data)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error unmarshaling JSON from file %q: %v\n", filePath, err)
 			continue
 		}
-		data.Path = filePath
 		dataStructures = append(dataStructures, &data)
 	}
 
@@ -110,7 +110,7 @@ func RunMetaInit(dirPath, outPath string) error {
 	}
 
 	for _, v := range processedData {
-		docRef := templateDocRef(v, cred.APIEndpoint)
+		docRef := templateDocRef(v, cred.APIEndpoint, cfg.Gen3Project)
 		jsonBytes, err := marshaller.Marshal(docRef)
 		if err != nil {
 			log.Fatalf("Failed to marshal DocumentReference to JSON: %v", err)

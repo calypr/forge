@@ -1,4 +1,4 @@
-package client
+package fence
 
 import (
 	"strings"

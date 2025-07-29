@@ -3,7 +3,7 @@ package meta
 import (
 	"fmt"
 
-	"github.com/calypr/forge/template"
+	"github.com/calypr/forge/metadata"
 	"github.com/spf13/cobra"
 )
 
@@ -19,7 +19,7 @@ initializing, checking the status, and interacting with metadata.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		fmt.Printf("Searching for .meta files in: %s\n", dirPath)
 
-		err := template.RunMetaInit(dirPath, outPath)
+		err := metadata.RunMetaInit(dirPath, outPath)
 		if err != nil {
 			return err
 		}
@@ -29,5 +29,5 @@ initializing, checking the status, and interacting with metadata.`,
 
 func init() {
 	MetaCmd.PersistentFlags().StringVarP(&dirPath, "dir", "d", ".", "Directory path to traverse for .meta files")
-	MetaCmd.PersistentFlags().StringVarP(&outPath, "out", "o", "./.drs/META", "Directory path to output FHIR .ndjson files")
+	MetaCmd.PersistentFlags().StringVarP(&outPath, "out", "o", "./META", "Directory path to output FHIR .ndjson files")
 }

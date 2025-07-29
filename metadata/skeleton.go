@@ -1,4 +1,4 @@
-package template
+package metadata
 
 import (
 	code "github.com/google/fhir/go/proto/google/fhir/proto/r5/core/codes_go_proto"
@@ -7,9 +7,9 @@ import (
 	drpb "github.com/google/fhir/go/proto/google/fhir/proto/r5/core/resources/document_reference_go_proto"
 )
 
-const FHIR_STRUCTURE_DEFINTION = "fhir/StructureDefinition"
+const FHIR_STRUCTURE_DEFINTION = "/fhir/StructureDefinition"
 
-func templateDocRef(metaStruc *MetaStructure, endpoint string) *cprb.ContainedResource {
+func templateDocRef(metaStruc *MetaStructure, endpoint string, project string) *cprb.ContainedResource {
 	obj := metaStruc.Metadata
 	dr := &drpb.DocumentReference{
 		Id: &dtpb.Id{Value: obj.ObjectID},
@@ -19,7 +19,7 @@ func templateDocRef(metaStruc *MetaStructure, endpoint string) *cprb.ContainedRe
 		Identifier: []*dtpb.Identifier{
 			{
 				Use:    &dtpb.Identifier_UseCode{Value: code.IdentifierUseCode_OFFICIAL},
-				System: &dtpb.Uri{Value: "sample-project"},
+				System: &dtpb.Uri{Value: project},
 				Value:  &dtpb.String{Value: obj.ObjectID},
 			},
 		},

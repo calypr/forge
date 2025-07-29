@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/calypr/forge/client"
+	"github.com/calypr/forge/client/fence"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v2"
 )
@@ -13,7 +13,7 @@ var PingCmd = &cobra.Command{
 	Use:   "ping",
 	Short: "Ping Calypr instance and return user's project and user permissions",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		FenceClient, err := client.NewFenceClient()
+		FenceClient, err := fence.NewFenceClient()
 		if err != nil {
 			return err
 		}
