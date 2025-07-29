@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/calypr/data-client/data-client/jwt"
+	drsClient "github.com/calypr/git-drs/client"
 	fver "github.com/google/fhir/go/fhirversion"
 	"github.com/google/fhir/go/jsonformat"
 )
@@ -59,7 +61,23 @@ func processMetaFiles(filePaths []string) ([]*MetaStructure, error) {
 	return dataStructures, nil
 }
 
-func RunMetaInit(dirPath string) error {
+func RunMetaInit(dirPath, outPath string) error {
+
+	cfg, err := drsClient.LoadConfig()
+	if err != nil {
+		return err
+	}
+	// get the gen3Profile and endpoint
+	profile := cfg.Gen3Profile
+	if profile == "" {
+		return fmt.Errorf("No gen3 profile specified. Please provide a gen3Profile key in your .drsconfig")
+	}
+	var conf jwt.Configure
+	cred, err := conf.ParseConfig(profile)
+	if err != nil {
+		return err
+	}
+
 	metaFilePaths, err := findMetaFiles(dirPath)
 	if err != nil {
 		return fmt.Errorf("error walking directory %q: %v", dirPath, err)
@@ -73,11 +91,10 @@ func RunMetaInit(dirPath string) error {
 		return fmt.Errorf("error processing meta files: %v", err)
 	}
 
-	outputDir := "./META"
-	if err := os.MkdirAll(outputDir, 0755); err != nil {
+	if err := os.MkdirAll(outPath, 0755); err != nil {
 		return fmt.Errorf("failed to create output directory: %v", err)
 	}
-	filename := filepath.Join(outputDir, "document_references.ndjson") // .ndjson is a common extension
+	filename := filepath.Join(outPath, "DocumentReference.ndjson") // .ndjson is a common extension
 
 	// Open the file in write mode. It will be created if it doesn't exist,
 	// and truncated if it does.
@@ -87,13 +104,13 @@ func RunMetaInit(dirPath string) error {
 	}
 	defer file.Close() // Make sure the file is closed at the end of the function.
 
-	marshaller, err := jsonformat.NewMarshaller(true, "", "  ", fver.R5)
+	marshaller, err := jsonformat.NewMarshaller(false, "", "", fver.R5)
 	if err != nil {
 		return fmt.Errorf("failed to create FHIR marshaller: %v", err)
 	}
 
 	for _, v := range processedData {
-		docRef := templateDocRef(v)
+		docRef := templateDocRef(v, cred.APIEndpoint)
 		jsonBytes, err := marshaller.Marshal(docRef)
 		if err != nil {
 			log.Fatalf("Failed to marshal DocumentReference to JSON: %v", err)

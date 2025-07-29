@@ -7,7 +7,9 @@ import (
 	drpb "github.com/google/fhir/go/proto/google/fhir/proto/r5/core/resources/document_reference_go_proto"
 )
 
-func templateDocRef(metaStruc *MetaStructure) *cprb.ContainedResource {
+const FHIR_STRUCTURE_DEFINTION = "fhir/StructureDefinition"
+
+func templateDocRef(metaStruc *MetaStructure, endpoint string) *cprb.ContainedResource {
 	obj := metaStruc.Metadata
 	dr := &drpb.DocumentReference{
 		Id: &dtpb.Id{Value: obj.ObjectID},
@@ -40,16 +42,16 @@ func templateDocRef(metaStruc *MetaStructure) *cprb.ContainedResource {
 		dr.Extension = []*dtpb.Extension{}
 		if obj.MD5 != "" {
 			dr.Extension = append(dr.Extension, &dtpb.Extension{
-				Url: &dtpb.Uri{Value: ""},
+				Url: &dtpb.Uri{Value: endpoint + FHIR_STRUCTURE_DEFINTION + "/md5"},
 				Value: &dtpb.Extension_ValueX{
-					Choice: &dtpb.Extension_ValueX_StringValue{StringValue: &dtpb.String{Value: ""}},
+					Choice: &dtpb.Extension_ValueX_StringValue{StringValue: &dtpb.String{Value: obj.MD5}},
 				},
 			})
 		} else if obj.SourceURL != nil {
 			dr.Extension = append(dr.Extension, &dtpb.Extension{
-				Url: &dtpb.Uri{Value: ""},
+				Url: &dtpb.Uri{Value: endpoint + FHIR_STRUCTURE_DEFINTION + "/source_path"},
 				Value: &dtpb.Extension_ValueX{
-					Choice: &dtpb.Extension_ValueX_Url{Url: &dtpb.Url{Value: ""}},
+					Choice: &dtpb.Extension_ValueX_Url{Url: &dtpb.Url{Value: *obj.SourceURL}},
 				},
 			})
 		}
