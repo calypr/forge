@@ -2,12 +2,13 @@ package sower
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 
 	"github.com/calypr/forge/client"
 )
 
-const sowerDispatch = "/dispatch"
+const sowerDispatch = "/job/dispatch"
 
 type Sower interface {
 	DispatchJob(name string, args *DispatchArgs) (*DispatchResp, error)
@@ -29,20 +30,20 @@ type SowerClient struct {
 	*client.Gen3Client
 }
 
-type Commits struct {
-	CommitId string `json:"commit_id"`
-	ObjectId string `json:"object_id"`
-	MetaPath string `json:"meta_path"`
+type CommitDetail struct {
+	ObjectId  string `json:"objectId"`            // Corresponds to git.Commit.Hash().String()
+	FileName  string `json:"fileName,omitempty"`  // Filename of the uploaded artifact (e.g., zip file)
+	RemoteURL string `json:"remoteURL,omitempty"` // URL where the uploaded file is accessible
 }
 
-type Push struct {
-	Commits []Commits `json:"commits"`
+type PushDetails struct {
+	Commits []CommitDetail `json:"commits"`
 }
 
 type DispatchArgs struct {
-	Push      Push   `json:"push"`
-	ProjectID string `json:"project_id"`
-	Method    string `json:"method"`
+	Push      PushDetails `json:"push"`
+	ProjectID string      `json:"projectId"`
+	Method    string      `json:"method"`
 }
 
 type JobArgs struct {
@@ -52,12 +53,8 @@ type JobArgs struct {
 
 func (sc *SowerClient) DispatchJob(name string, args *DispatchArgs) (*DispatchResp, error) {
 	body := JobArgs{
-		Action: "fhir_import_export",
-		Input: DispatchArgs{
-			Push:      Push{},
-			ProjectID: sc.ProjectId,
-			Method:    "put",
-		},
+		Action: name,
+		Input:  *args,
 	}
 	bodyBytes, err := json.Marshal(body)
 	if err != nil {
@@ -68,6 +65,7 @@ func (sc *SowerClient) DispatchJob(name string, args *DispatchArgs) (*DispatchRe
 	if resp.Err != nil {
 		return nil, resp.Err
 	}
+	fmt.Println("RESP: ", string(resp.Body))
 
 	return nil, nil
 }

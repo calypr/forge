@@ -10,7 +10,7 @@ import (
 	"time"
 
 	token "github.com/bmeg/grip-graphql/middleware"
-	drsClient "github.com/calypr/git-drs/client"
+	drsConfig "github.com/calypr/git-drs/config"
 
 	"github.com/calypr/data-client/data-client/commonUtils"
 	"github.com/calypr/data-client/data-client/jwt"
@@ -27,7 +27,7 @@ type Gen3Client struct {
 func NewGen3Client() (*Gen3Client, error) {
 	var conf jwt.Configure
 
-	cfg, err := drsClient.LoadConfig()
+	cfg, err := drsConfig.LoadConfig()
 	if err != nil {
 		return nil, err
 	}

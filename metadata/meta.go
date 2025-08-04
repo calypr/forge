@@ -9,9 +9,15 @@ import (
 	"time"
 
 	"github.com/calypr/data-client/data-client/jwt"
-	drsClient "github.com/calypr/git-drs/client"
+	drsConfig "github.com/calypr/git-drs/config"
 	fver "github.com/google/fhir/go/fhirversion"
 	"github.com/google/fhir/go/jsonformat"
+)
+
+const (
+	META_DIR           = "META"
+	SNAPSHOT_DIRECTORY = ".forge/snapshots"
+	NDJSON_EXT         = ".ndjson"
 )
 
 // DVCMetadata represents the structure of the "dvc_metadata" object in your JSON.
@@ -63,7 +69,7 @@ func processMetaFiles(filePaths []string) ([]*MetaStructure, error) {
 
 func RunMetaInit(dirPath, outPath string) error {
 
-	cfg, err := drsClient.LoadConfig()
+	cfg, err := drsConfig.LoadConfig()
 	if err != nil {
 		return err
 	}
@@ -94,15 +100,13 @@ func RunMetaInit(dirPath, outPath string) error {
 	if err := os.MkdirAll(outPath, 0755); err != nil {
 		return fmt.Errorf("failed to create output directory: %v", err)
 	}
-	filename := filepath.Join(outPath, "DocumentReference.ndjson") // .ndjson is a common extension
+	filename := filepath.Join(outPath, "DocumentReference"+NDJSON_EXT) // .ndjson is a common extension
 
-	// Open the file in write mode. It will be created if it doesn't exist,
-	// and truncated if it does.
-	file, err := os.Create(filename)
+	file, err := os.OpenFile(filename, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
-		return fmt.Errorf("failed to create file %s: %v", filename, err)
+		return fmt.Errorf("failed to open/create file %s: %v", filename, err)
 	}
-	defer file.Close() // Make sure the file is closed at the end of the function.
+	defer file.Close()
 
 	marshaller, err := jsonformat.NewMarshaller(false, "", "", fver.R5)
 	if err != nil {

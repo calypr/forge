@@ -1,32 +1,22 @@
 package commit
 
 import (
-	"github.com/calypr/forge/client"
-	InternalCommit "github.com/calypr/forge/commit"
+	comm "github.com/calypr/forge/commit"
 	"github.com/spf13/cobra"
 )
 
-const metaDir = "META/"
-const dotDrsCommitsDir = ".drs/commits"
-
-var CommitCmd = &cobra.Command{
-	Use:   "commit",
-	Short: "Commit metadata files",
+var PreCommitCmd = &cobra.Command{
+	Use:   "pre-commit",
+	Short: "Prepare Metadata files for Commit",
 	Long: `Validates META directory and creates metadata snapshot.
 Designed to be a pre-commit hook that runs before git commit.`,
 	Example: "forge commit",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		cli, err := client.NewGen3Client()
+
+		cObj, err := comm.NewCommitObj()
 		if err != nil {
 			return err
 		}
-		cfg := InternalCommit.Config{
-			MetaDir:       "META/",
-			DrsCommitsDir: ".drs/commits",
-			FileExtension: ".ndjson",
-			ProjectId:     cli.ProjectId,
-		}
-
-		return InternalCommit.RunCommit(cfg)
+		return cObj.RunPreCommit()
 	},
 }

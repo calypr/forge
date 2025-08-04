@@ -2,7 +2,6 @@ package validate
 
 import (
 	"fmt"
-	"log"
 
 	"github.com/calypr/forge/validator"
 	"github.com/spf13/cobra"
@@ -16,17 +15,19 @@ import (
 var ValidateCmd = &cobra.Command{
 	Use:   "validate [inputFile]",
 	Short: "validate data files given a jsonschema and a ndjson data target file",
-	Args:  cobra.ExactArgs(2),
+	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-
-		inputFile, schemaPath := args[0], args[1]
-		v := validator.NewJsonSchema(inputFile, schemaPath)
-
-		if err := v.Validate(); err != nil {
-			log.Printf("Validation failed: %v", err)
+		filePath := args[0]
+		v, err := validator.NewJsonSchema()
+		if err != nil {
 			return err
 		}
-		fmt.Printf("Validation successful for %s against schema %s\n", inputFile, schemaPath)
+
+		if err := v.Validate(filePath); err != nil {
+			return err
+		}
+
+		fmt.Printf("Validation successful for %s\n", filePath)
 		return nil
 	},
 }
