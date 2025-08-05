@@ -22,6 +22,7 @@ func init() {
 	RootCmd.AddCommand(push.PushCmd)
 	RootCmd.AddCommand(ping.PingCmd)
 	RootCmd.AddCommand(commit.PreCommitCmd)
+	RootCmd.AddCommand(commit.PostCommitCmd)
 
 	// Don't show the help menu for that command every time there is an error
 	RootCmd.SilenceUsage = true

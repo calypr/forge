@@ -5,20 +5,45 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"path/filepath"
-	"strings"
 
-	"github.com/calypr/forge/client"
 	"github.com/calypr/forge/client/sower"
 	"github.com/calypr/forge/utils/gitutil"
 )
 
-func RunPush() error {
+func RunPush(token string) error {
+	err := checkGHPAccessToken(token)
+	if err != nil {
+		return err
+	}
 	repo, err := gitutil.OpenRepository(".")
 	if err != nil {
 		return err
 	}
+	remote, err := repo.Remote("origin")
+	if err != nil {
+		return fmt.Errorf("failed to get 'origin' remote: %w", err)
+	}
+	urls := remote.Config().URLs
+	if len(urls) == 0 {
+		return fmt.Errorf("no URLs found for 'origin' remote")
+	}
+	if len(urls) > 1 {
+		return fmt.Errorf("not expecting more than 1 remote url. Got %d: %s", len(urls), urls)
+	}
+	remoteURL := urls[0]
+	url, err := gitutil.TrimGitURLPrefix(remoteURL)
+	if err != nil {
+		return err
+	}
+
+	username, err := gitutil.GetGlobalUserIdentity()
+	if err != nil {
+		return fmt.Errorf("Unable to read global git config to get username: %s", err)
+	}
+
 	hashes, err := gitutil.GetUnpushedCommits(repo)
 	if err != nil {
 		return err
@@ -34,68 +59,47 @@ func RunPush() error {
 	}
 
 	var commitDetails []sower.CommitDetail
-
-	cli, err := client.NewGen3Client()
-	if err != nil {
-		return err
-	}
-
+	// All unpushed local commits are sent to the job with snapshot location
 	for _, hash := range hashes {
 		hashDir := filepath.Join(".forge", "snapshots", hash.String())
-		fmt.Printf("Searching for zip files in: %s\n", hashDir)
+		fmt.Printf("Searching for files in: %s\n", hashDir)
 
-		if _, err := os.Stat(hashDir); os.IsNotExist(err) {
-			fmt.Printf("Warning: Commit directory %s does not exist. Skipping zip file upload for this commit.\n", hashDir)
-			// Even if no zip file, we still want to include the commit hash in the dispatch
-			commitDetails = append(commitDetails, sower.CommitDetail{
-				ObjectId: hash.String(),
-			})
-			continue
+		commitDetail := sower.CommitDetail{
+			CommitId: hash.String(),
 		}
+		foundSnapshot := false
+		if _, err := os.Stat(hashDir); !os.IsNotExist(err) {
+			entries, err := os.ReadDir(hashDir)
+			if err != nil {
+				return fmt.Errorf("failed to read commit directory %s: %w", hashDir, err)
+			}
 
-		entries, err := os.ReadDir(hashDir)
-		if err != nil {
-			return fmt.Errorf("failed to read commit directory %s: %w", hashDir, err)
-		}
-
-		foundZipForCommit := false
-		for _, entry := range entries {
-			if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".zip") {
-				zipFilePath := filepath.Join(hashDir, entry.Name())
-				fmt.Printf("Found zip file: %s\n", zipFilePath)
-
-				zipHash, err := hashFileSHA256(zipFilePath)
-				if err != nil {
-					return err
+			for _, entry := range entries {
+				if !entry.IsDir() {
+					commitDetail.FileTitle = entry.Name()
+					commitDetail.RepoUrl = url
+					commitDetail.FilePath = filepath.Join(hashDir, entry.Name())
+					foundSnapshot = true
+					break // We only expect one snapshot file per commit
 				}
-
-				if err != nil {
-					return fmt.Errorf("failed to upload zip file %s: %w", zipFilePath, err)
-				}
-				fmt.Printf("Uploaded %s with hash %s to %s\n", zipFilePath, zipHash, cli.BucketName)
-				commitDetails = append(commitDetails, sower.CommitDetail{
-					ObjectId: zipHash,
-					FileName: entry.Name(),
-				})
-				foundZipForCommit = true
 			}
 		}
-
-		if !foundZipForCommit {
-			// If no zip file was found for this commit, but the commit itself exists,
-			// add just the ObjectId. This handles cases where a commit has no associated metadata changes.
-			commitDetails = append(commitDetails, sower.CommitDetail{
-				ObjectId: hash.String(),
-			})
+		commitDetails = append(commitDetails, commitDetail)
+		if foundSnapshot {
+			fmt.Printf("Found snapshot for commit %s: %s\n", hash.String(), commitDetail.FileTitle)
+		} else {
+			fmt.Printf("No snapshot found for commit %s. Adding commit hash only.\n", hash.String())
 		}
 	}
 
 	dispatchArgs := &sower.DispatchArgs{
-		Push: sower.PushDetails{ // Use the named type here
+		Push: sower.PushDetails{
 			Commits: commitDetails,
 		},
-		ProjectID: sc.ProjectId,
-		Method:    "put",
+		ProjectID:      sc.ProjectId,
+		Method:         "put",
+		GHPAccessToken: token,
+		GHUserName:     username,
 	}
 
 	resp, err := sc.DispatchJob(
@@ -127,4 +131,34 @@ func hashFileSHA256(filePath string) (string, error) {
 	hashString := hex.EncodeToString(hashInBytes)
 
 	return hashString, nil
+}
+
+func checkGHPAccessToken(token string) error {
+
+	req, err := http.NewRequest("GET", "https://source.ohsu.edu/api/v3/user", nil)
+	if err != nil {
+		return fmt.Errorf("Error creating request: %s\n", err)
+	}
+	req.Header.Set("Authorization", "token "+token)
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("Error sending request: %s\n", err)
+	}
+
+	defer resp.Body.Close()
+	_, err = io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("Error reading response body: %s\n", err)
+	}
+
+	if resp.StatusCode == http.StatusOK {
+		return nil
+	} else if resp.StatusCode == http.StatusUnauthorized {
+		return fmt.Errorf("Error: The personal access token is invalid or expired.")
+	} else if resp.StatusCode == http.StatusForbidden {
+		return fmt.Errorf("\nError: The personal access token is valid, but lacks the necessary permissions (scopes) to access this resource.")
+	} else {
+		return fmt.Errorf("\nUnexpected response status: %d\n", resp.StatusCode)
+	}
 }

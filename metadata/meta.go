@@ -74,7 +74,7 @@ func RunMetaInit(dirPath, outPath string) error {
 		return err
 	}
 	// get the gen3Profile and endpoint
-	profile := cfg.Gen3Profile
+	profile := cfg.Servers.Gen3.Auth.Profile
 	if profile == "" {
 		return fmt.Errorf("No gen3 profile specified. Please provide a gen3Profile key in your .drsconfig")
 	}
@@ -114,7 +114,7 @@ func RunMetaInit(dirPath, outPath string) error {
 	}
 
 	for _, v := range processedData {
-		docRef := templateDocRef(v, cred.APIEndpoint, cfg.Gen3Project)
+		docRef := templateDocRef(v, cred.APIEndpoint, cfg.Servers.Gen3.Auth.ProjectID)
 		jsonBytes, err := marshaller.Marshal(docRef)
 		if err != nil {
 			log.Fatalf("Failed to marshal DocumentReference to JSON: %v", err)

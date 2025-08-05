@@ -10,7 +10,7 @@ var PreCommitCmd = &cobra.Command{
 	Short: "Prepare Metadata files for Commit",
 	Long: `Validates META directory and creates metadata snapshot.
 Designed to be a pre-commit hook that runs before git commit.`,
-	Example: "forge commit",
+	Example: "forge pre-commit",
 	RunE: func(cmd *cobra.Command, args []string) error {
 
 		cObj, err := comm.NewCommitObj()
@@ -18,5 +18,20 @@ Designed to be a pre-commit hook that runs before git commit.`,
 			return err
 		}
 		return cObj.RunPreCommit()
+	},
+}
+
+var PostCommitCmd = &cobra.Command{
+	Use:     "post-commit",
+	Short:   "Place zipped snapshot into commit dir",
+	Long:    `Prepares repo structure for push.`,
+	Example: "forge post-commit",
+	RunE: func(cmd *cobra.Command, args []string) error {
+
+		cObj, err := comm.NewCommitObj()
+		if err != nil {
+			return err
+		}
+		return cObj.RunPostCommit()
 	},
 }

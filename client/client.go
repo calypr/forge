@@ -32,7 +32,7 @@ func NewGen3Client() (*Gen3Client, error) {
 		return nil, err
 	}
 
-	profile := cfg.Gen3Profile
+	profile := cfg.Servers.Gen3.Auth.Profile
 	if profile == "" {
 		return nil, fmt.Errorf("No gen3 profile specified. Please provide a gen3Profile key in your .drsconfig")
 	}
@@ -48,12 +48,12 @@ func NewGen3Client() (*Gen3Client, error) {
 	}
 
 	// get the gen3Project and gen3Bucket from the config
-	projectId := cfg.Gen3Project
+	projectId := cfg.Servers.Gen3.Auth.ProjectID
 	if projectId == "" {
 		return nil, fmt.Errorf("No gen3 project specified. Please provide a gen3Project key in your .drsconfig")
 	}
 
-	bucketName := cfg.Gen3Bucket
+	bucketName := cfg.Servers.Gen3.Auth.Bucket
 	if bucketName == "" {
 		return nil, fmt.Errorf("No gen3 bucket specified. Please provide a gen3Bucket key in your .drsconfig")
 	}

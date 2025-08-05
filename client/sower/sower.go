@@ -31,9 +31,10 @@ type SowerClient struct {
 }
 
 type CommitDetail struct {
-	ObjectId  string `json:"objectId"`            // Corresponds to git.Commit.Hash().String()
-	FileName  string `json:"fileName,omitempty"`  // Filename of the uploaded artifact (e.g., zip file)
-	RemoteURL string `json:"remoteURL,omitempty"` // URL where the uploaded file is accessible
+	CommitId  string `json:"commitId,omitempty"`  // Corresponds to git.Commit.Hash().String()
+	FileTitle string `json:"fileTitle,omitempty"` // Filename of the uploaded artifact (e.g., zip file)
+	RepoUrl   string `json:"repoUrl"`             // URL where the uploaded file is accessible
+	FilePath  string `json:"filePath"`            // The path that will be used for fetching the file in the job
 }
 
 type PushDetails struct {
@@ -41,9 +42,12 @@ type PushDetails struct {
 }
 
 type DispatchArgs struct {
-	Push      PushDetails `json:"push"`
-	ProjectID string      `json:"projectId"`
-	Method    string      `json:"method"`
+	Push           PushDetails `json:"push"`
+	ProjectID      string      `json:"projectId"`
+	Method         string      `json:"method"`
+	GHPAccessToken string      `json:"ghToken"`
+	RepoLocation   string      `json:"repoLocation"`
+	GHUserName     string      `json:"ghUserName"`
 }
 
 type JobArgs struct {
