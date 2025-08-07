@@ -20,18 +20,3 @@ Designed to be a pre-commit hook that runs before git commit.`,
 		return cObj.RunPreCommit()
 	},
 }
-
-var PostCommitCmd = &cobra.Command{
-	Use:     "post-commit",
-	Short:   "Place zipped snapshot into commit dir",
-	Long:    `Prepares repo structure for push.`,
-	Example: "forge post-commit",
-	RunE: func(cmd *cobra.Command, args []string) error {
-
-		cObj, err := comm.NewCommitObj()
-		if err != nil {
-			return err
-		}
-		return cObj.RunPostCommit()
-	},
-}

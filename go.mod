@@ -2,8 +2,6 @@ module github.com/calypr/forge
 
 go 1.24.2
 
-replace github.com/calypr/git-drs v0.0.0-20250728161316-1ff18374c536 => ../git-drs
-
 require (
 	github.com/bmeg/golib v0.0.0-20200725232156-e799a31439fc
 	github.com/bmeg/grip-graphql v0.0.0-20250515213638-45743b2c4e22
@@ -11,7 +9,7 @@ require (
 	github.com/bmeg/jsonschemagraph v0.0.3
 	github.com/bytedance/sonic v1.14.0
 	github.com/calypr/data-client v0.0.0-20250805173846-f0572dfd7466
-	github.com/calypr/git-drs v0.0.0-20250728161316-1ff18374c536
+	github.com/calypr/git-drs v0.0.0-20250807205213-89e25193cf2c
 	github.com/go-git/go-git/v5 v5.12.0
 	github.com/google/fhir/go v0.7.5-0.20250725162854-700b94448954
 	github.com/hashicorp/go-multierror v1.1.1
@@ -23,6 +21,7 @@ require (
 
 require (
 	bitbucket.org/creachadair/stringset v0.0.9 // indirect
+	cloud.google.com/go/compute/metadata v0.6.0 // indirect
 	dario.cat/mergo v1.0.0 // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
 	github.com/ProtonMail/go-crypto v1.1.6 // indirect
@@ -38,6 +37,8 @@ require (
 	github.com/golang/groupcache v0.0.0-20241129210726-2c02b8208cf8 // indirect
 	github.com/golang/protobuf v1.5.4 // indirect
 	github.com/google/fhir/go/protopath v0.7.4 // indirect
+	github.com/google/go-github v17.0.0+incompatible // indirect
+	github.com/google/go-querystring v1.1.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/grpc-ecosystem/go-grpc-middleware v1.0.0 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.26.3 // indirect
@@ -64,12 +65,14 @@ require (
 	github.com/sirupsen/logrus v1.9.3 // indirect
 	github.com/skeema/knownhosts v1.3.1 // indirect
 	github.com/spf13/pflag v1.0.6 // indirect
+	github.com/tcnksm/go-latest v0.0.0-20170313132115-e3007ae9052e // indirect
 	github.com/twitchyliquid64/golang-asm v0.15.1 // indirect
 	github.com/xanzy/ssh-agent v0.3.3 // indirect
 	golang.org/x/arch v0.0.0-20210923205945-b76863e36670 // indirect
 	golang.org/x/crypto v0.39.0 // indirect
 	golang.org/x/exp v0.0.0-20240719175910-8a7402abbf56 // indirect
 	golang.org/x/net v0.41.0 // indirect
+	golang.org/x/oauth2 v0.30.0 // indirect
 	golang.org/x/sys v0.33.0 // indirect
 	golang.org/x/term v0.32.0 // indirect
 	golang.org/x/text v0.26.0 // indirect

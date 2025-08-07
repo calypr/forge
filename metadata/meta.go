@@ -15,9 +15,9 @@ import (
 )
 
 const (
-	META_DIR           = "META"
-	SNAPSHOT_DIRECTORY = ".forge/snapshots"
-	NDJSON_EXT         = ".ndjson"
+	META_DIR      = "./META"
+	NDJSON_EXT    = ".ndjson"
+	FILE_META_EXT = ".meta"
 )
 
 // DVCMetadata represents the structure of the "dvc_metadata" object in your JSON.
@@ -67,8 +67,8 @@ func processMetaFiles(filePaths []string) ([]*MetaStructure, error) {
 	return dataStructures, nil
 }
 
-func RunMetaInit(dirPath, outPath string) error {
-
+func RunMetaInit(dirPath, outPath string, rebuild bool) error {
+	var fileFlags int
 	cfg, err := drsConfig.LoadConfig()
 	if err != nil {
 		return err
@@ -84,12 +84,12 @@ func RunMetaInit(dirPath, outPath string) error {
 		return err
 	}
 
-	metaFilePaths, err := findMetaFiles(dirPath)
+	metaFilePaths, err := findMetaFiles(dirPath, rebuild)
 	if err != nil {
 		return fmt.Errorf("error walking directory %q: %v", dirPath, err)
 	}
 	if len(metaFilePaths) == 0 {
-		fmt.Println("No .meta files found to process.")
+		fmt.Printf("No %s files found to process\n", FILE_META_EXT)
 		return nil
 	}
 	processedData, err := processMetaFiles(metaFilePaths)
@@ -102,7 +102,12 @@ func RunMetaInit(dirPath, outPath string) error {
 	}
 	filename := filepath.Join(outPath, "DocumentReference"+NDJSON_EXT) // .ndjson is a common extension
 
-	file, err := os.OpenFile(filename, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if rebuild {
+		fileFlags = os.O_CREATE | os.O_WRONLY | os.O_TRUNC
+	} else {
+		fileFlags = os.O_APPEND | os.O_CREATE | os.O_WRONLY
+	}
+	file, err := os.OpenFile(filename, fileFlags, 0644)
 	if err != nil {
 		return fmt.Errorf("failed to open/create file %s: %v", filename, err)
 	}

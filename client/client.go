@@ -86,12 +86,15 @@ func (cl *Gen3Client) MakeReq(method string, path string, body []byte) *Resp {
 	// Update AccessToken if token is old
 	if expiration.Before(time.Now()) {
 		r := jwt.Request{}
-		r.RequestNewAccessToken(cl.Base.String()+commonUtils.FenceAccessTokenEndpoint, &cl.Cred)
+		err := r.RequestNewAccessToken(cl.Base.String()+commonUtils.FenceAccessTokenEndpoint, &cl.Cred)
+		if err != nil {
+			return &Resp{nil, err}
+		}
 	}
 	if cl.Cred.AccessToken == "" {
 		return &Resp{nil, fmt.Errorf("access token not found in profile config")}
 	}
-	req.Header.Set("Authorization", "Bearer "+cl.Cred.AccessToken)
+	req.Header.Set("Authorization", "bearer "+cl.Cred.AccessToken)
 
 	client := &http.Client{}
 	response, err := client.Do(req)

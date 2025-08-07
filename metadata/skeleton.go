@@ -29,26 +29,26 @@ func templateDocRef(metaStruc *MetaStructure, endpoint string, project string) *
 			{
 				Attachment: &dtpb.Attachment{
 					ContentType: &dtpb.Attachment_ContentTypeCode{Value: obj.MIME},
-					Url:         &dtpb.Url{Value: obj.Realpath},
-					Title:       &dtpb.String{Value: metaStruc.Path},
-					Size:        &dtpb.Integer64{Value: obj.Size},
-					Creation:    parseFHIRDateTimeString(obj.Modified),
+					// This assumes that realpath will always be an absolute path. This can easily lead to validation errors
+					Url:      &dtpb.Url{Value: "file://" + obj.Realpath},
+					Title:    &dtpb.String{Value: metaStruc.Path},
+					Size:     &dtpb.Integer64{Value: obj.Size},
+					Creation: parseFHIRDateTimeString(obj.Modified),
 				},
 			},
 		},
 	}
 
 	if obj.MD5 != "" || obj.SourceURL != nil {
-		dr.Extension = []*dtpb.Extension{}
 		if obj.MD5 != "" {
-			dr.Extension = append(dr.Extension, &dtpb.Extension{
+			dr.Content[0].Attachment.Extension = append(dr.Content[0].Attachment.Extension, &dtpb.Extension{
 				Url: &dtpb.Uri{Value: endpoint + FHIR_STRUCTURE_DEFINTION + "/md5"},
 				Value: &dtpb.Extension_ValueX{
 					Choice: &dtpb.Extension_ValueX_StringValue{StringValue: &dtpb.String{Value: obj.MD5}},
 				},
 			})
 		} else if obj.SourceURL != nil {
-			dr.Extension = append(dr.Extension, &dtpb.Extension{
+			dr.Content[0].Attachment.Extension = append(dr.Content[0].Attachment.Extension, &dtpb.Extension{
 				Url: &dtpb.Uri{Value: endpoint + FHIR_STRUCTURE_DEFINTION + "/source_path"},
 				Value: &dtpb.Extension_ValueX{
 					Choice: &dtpb.Extension_ValueX_Url{Url: &dtpb.Url{Value: *obj.SourceURL}},

@@ -9,6 +9,7 @@ import (
 
 var dirPath string
 var outPath string
+var rebuild bool
 
 var MetaCmd = &cobra.Command{
 	Use:   "meta",
@@ -17,9 +18,8 @@ var MetaCmd = &cobra.Command{
 initializing, checking the status, and interacting with metadata.`,
 	Example: "forge meta ./TEST ./META",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		fmt.Printf("Searching for .meta files in: %s\n", dirPath)
-
-		err := metadata.RunMetaInit(dirPath, outPath)
+		fmt.Printf("Searching for %s files in: %s\n", metadata.FILE_META_EXT, dirPath)
+		err := metadata.RunMetaInit(dirPath, outPath, rebuild)
 		if err != nil {
 			return err
 		}
@@ -29,5 +29,7 @@ initializing, checking the status, and interacting with metadata.`,
 
 func init() {
 	MetaCmd.PersistentFlags().StringVarP(&dirPath, "dir", "d", ".", "Directory path to traverse for .meta files")
-	MetaCmd.PersistentFlags().StringVarP(&outPath, "out", "o", "./META", "Directory path to output FHIR .ndjson files")
+	MetaCmd.PersistentFlags().StringVarP(&outPath, "out", "o", metadata.META_DIR, "Directory path to output FHIR .ndjson files")
+	MetaCmd.PersistentFlags().BoolVarP(&rebuild, "rebuild", "r", false, "Force rebuild metadata files even if no new .meta files exist")
+
 }

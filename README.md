@@ -6,40 +6,42 @@ Metadata handling for CALPYR data platform
 
 This repo is designed to produce git hook commands that take care of metadata additions / subtractions that are run before or after certain git commands like commit and push. Draft workflow currently:
 
-1. git add META directory to update metadata snapshot that will be sent to Calpyr ETL pipeline
-   a. optionally, if you only have files and no metadata, add .meta file stubs to repo.
-
-2. git commit. This will run the pre-commit forge hook that will translate .meta files into Document Reference entries and package it all up into a snapshot zip file. If you have additional metadata / document references along with your files that you are commiting the two processes shouldn't conflict with eachother. LFS hooks / lfs add is done in this as well for snapshot file.
-
-3. git push. The post push hook command will start the sower job if the git-lfs upload doesn't error out. If it does, then this command isn't run. Essentially all it does is start a sower job with the DRS ids of the zip snapshot files that you want to upload. Initial server ETL design is to delete all data in the project and reload it, so if there are multiple snaphots, probably only want to upload the latest one.
-
-4. A clone level hook will have to search the repo for all of the snapshots, pull the latest one and place it unzipped in the META directory. Additionally if you are pushing a new snapshot, but your META/ directory is old, ie: a snapshot has been pushed since you last cloned / or pulled the latest metadata into your repo there will need to be a system server side that can quickly detect this mismatch and return an error before the job is sent to the server. One idea might be to have the snapshot file always be called the same name so that if you attempt to push an old version of the file, git should save you with a merge error.
-
-5. If the user is adding files locally, there should be a command that is run in the pre-commit hook for generating these ".meta" files so that they can be used for templating docrefs. This would probably be an add hook perhaps.
-
-6. To setup these "forge" level git hooks a wrapper "init" command like "forge init" will probably have to be run which will wrap git-drs init
-   and add in all of the special forge hooks into the .git directory so that it works as intended for the user.
-
-## Example user workflow files only
+## Example user workflow
 
 ```
 git clone repo
-forge init
-git add files, --add hook is run to create .meta stubs
-git commit -m "test" -- files packaged into snapshot file
-git push origin main -- check
+forge init -- exactly same as git-dirs init, just a wrapper around it
+git add files
+git commit -m "test" -- same as git-drs
+git push origin main -- same as git-dirs
+forge publish [github personal access token]
 ```
 
-## Example user workflow metadata only
+To generate a personal access token for a github repo check these docs:
+https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens
 
-```
-git clone repo
-forge init
-git add META/
-git commit -m "test"
-git push origin main
-```
+## Command descriptions
 
-If git doesn't detect any changes with remote and your local git state you will not be able to do anything. This could be an issue
-when metadata processes don't work as expected, but We should probably move to support local simulation so that users aren't trying to debug
-pushes to a repo via the actual Calypr stack.
+### ping
+
+Same as ping in g3t
+
+### meta
+
+Generates metadata from non checked in .meta files. If .meta files are already checked in you can regen metadata with -r flag. This command is run as part of the pre-commit command
+
+### validate
+
+Validates metadata against the jsonschema in grip
+
+### precommit
+
+Runs meta init command then locates all .ndjson files in META directory and validates each file.
+
+### publish
+
+Validates that your Personal Access token exists and is valid
+Packages together relevent information used to init the git repo in a remote job
+Kicks off a sower job to process the metadata files that you have just pushed up
+
+No git hook for publish, users are expected to run that themselves.
