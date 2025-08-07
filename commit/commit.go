@@ -18,8 +18,8 @@ import (
 )
 
 type Commit struct {
-	sch *graph.GraphSchema
-	cli *client.Gen3Client
+	Sch *graph.GraphSchema
+	Cli *client.Gen3Client
 }
 
 func NewCommitObj() (*Commit, error) {
@@ -67,8 +67,8 @@ func NewCommitObj() (*Commit, error) {
 		out.Classes[defName] = sch
 	}
 	return &Commit{
-		sch: out,
-		cli: cli,
+		Sch: out,
+		Cli: cli,
 	}, nil
 }
 
@@ -105,7 +105,7 @@ func (c *Commit) RunPreCommit() error {
 			if !ok {
 				return fmt.Errorf("err indexing resourceType on row %s", row)
 			}
-			err = c.sch.Validate(resource, row)
+			err = c.Sch.Validate(resource, row)
 			if err != nil {
 				allErrors = multierror.Append(allErrors, fmt.Errorf("failed to validate JSON: (Error: %w)", err))
 				continue
