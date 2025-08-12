@@ -1,9 +1,6 @@
 package initialize
 
 import (
-	"os"
-	"path/filepath"
-
 	drsInit "github.com/calypr/git-drs/cmd/initialize"
 	"github.com/spf13/cobra"
 )
@@ -26,15 +23,6 @@ var InitCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		err := drsInit.Init("gen3", apiEndpoint, bucket, credFile, fenceToken, profile, project, terraProject)
 		if err != nil {
-			return err
-		}
-		preCommitPath := filepath.Join(".git", "hooks", "pre-commit")
-		file, err := os.OpenFile(preCommitPath, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0755)
-		if err != nil {
-			return err
-		}
-		defer file.Close()
-		if _, err := file.WriteString("forge pre-commit\n"); err != nil {
 			return err
 		}
 		return nil

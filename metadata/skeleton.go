@@ -1,60 +1,94 @@
 package metadata
 
 import (
+	"fmt"
+	"path"
+	"strings"
+
+	idxClient "github.com/calypr/git-drs/client"
 	code "github.com/google/fhir/go/proto/google/fhir/proto/r5/core/codes_go_proto"
 	dtpb "github.com/google/fhir/go/proto/google/fhir/proto/r5/core/datatypes_go_proto"
 	cprb "github.com/google/fhir/go/proto/google/fhir/proto/r5/core/resources/bundle_and_contained_resource_go_proto"
 	drpb "github.com/google/fhir/go/proto/google/fhir/proto/r5/core/resources/document_reference_go_proto"
+	"github.com/google/uuid"
 )
 
-const FHIR_STRUCTURE_DEFINTION = "/fhir/StructureDefinition"
+const FHIR_STRUCTURE_DEFINITION = "/fhir/StructureDefinition"
+const RESEARCH_STUDY = "ResearchStudy"
+const FILE_PREFIX = "file://"
 
-func templateDocRef(metaStruc *MetaStructure, endpoint string, project string) *cprb.ContainedResource {
-	obj := metaStruc.Metadata
-	dr := &drpb.DocumentReference{
-		Id: &dtpb.Id{Value: obj.ObjectID},
-		Status: &drpb.DocumentReference_StatusCode{
-			Value: code.DocumentReferenceStatusCode_CURRENT,
+func CreateReference(resourceType, resourceId string) *dtpb.Reference {
+	return &dtpb.Reference{
+		Type: &dtpb.Uri{
+			Value: resourceType,
 		},
-		Identifier: []*dtpb.Identifier{
-			{
-				Use:    &dtpb.Identifier_UseCode{Value: code.IdentifierUseCode_OFFICIAL},
-				System: &dtpb.Uri{Value: project},
-				Value:  &dtpb.String{Value: obj.ObjectID},
-			},
-		},
-		DocStatus: &drpb.DocumentReference_DocStatusCode{Value: code.CompositionStatusCode_FINAL},
-		Date:      parseFHIRInstantString(obj.Modified),
-		Content: []*drpb.DocumentReference_Content{
-			{
-				Attachment: &dtpb.Attachment{
-					ContentType: &dtpb.Attachment_ContentTypeCode{Value: obj.MIME},
-					// This assumes that realpath will always be an absolute path. This can easily lead to validation errors
-					Url:      &dtpb.Url{Value: "file://" + obj.Realpath},
-					Title:    &dtpb.String{Value: metaStruc.Path},
-					Size:     &dtpb.Integer64{Value: obj.Size},
-					Creation: parseFHIRDateTimeString(obj.Modified),
-				},
+		Reference: &dtpb.Reference_Uri{
+			Uri: &dtpb.String{
+				Value: path.Join(resourceType, resourceId),
 			},
 		},
 	}
+}
 
-	if obj.MD5 != "" || obj.SourceURL != nil {
-		if obj.MD5 != "" {
-			dr.Content[0].Attachment.Extension = append(dr.Content[0].Attachment.Extension, &dtpb.Extension{
-				Url: &dtpb.Uri{Value: endpoint + FHIR_STRUCTURE_DEFINTION + "/md5"},
-				Value: &dtpb.Extension_ValueX{
-					Choice: &dtpb.Extension_ValueX_StringValue{StringValue: &dtpb.String{Value: obj.MD5}},
+func templateDocRef(metaStruc idxClient.ListRecordsResult, endpoint string, project string, rSID string) *cprb.ContainedResource {
+	obj := metaStruc.Record
+
+	// Create the extensions for hashes
+	var extensions []*dtpb.Extension
+	if obj.Hashes.MD5 != "" {
+		extensions = append(extensions, &dtpb.Extension{
+			Url: &dtpb.Uri{Value: endpoint + FHIR_STRUCTURE_DEFINITION + "/checksum-md5"},
+			Value: &dtpb.Extension_ValueX{
+				Choice: &dtpb.Extension_ValueX_StringValue{StringValue: &dtpb.String{Value: obj.Hashes.MD5}},
+			},
+		})
+	}
+	if obj.Hashes.SHA256 != "" {
+		extensions = append(extensions, &dtpb.Extension{
+			Url: &dtpb.Uri{Value: "http://" + endpoint + FHIR_STRUCTURE_DEFINITION + "/checksum-sha256"},
+			Value: &dtpb.Extension_ValueX{
+				Choice: &dtpb.Extension_ValueX_StringValue{StringValue: &dtpb.String{Value: obj.Hashes.SHA256}},
+			},
+		})
+	}
+
+	// Determine the URL for the attachment
+	var url *dtpb.Url
+	if len(obj.URLs) > 0 {
+		url = &dtpb.Url{Value: obj.URLs[0]}
+	}
+
+	// Create the DocumentReference
+	dr := &drpb.DocumentReference{
+		Id:        &dtpb.Id{Value: obj.Did},
+		Status:    &drpb.DocumentReference_StatusCode{Value: code.DocumentReferenceStatusCode_CURRENT},
+		DocStatus: &drpb.DocumentReference_DocStatusCode{Value: code.CompositionStatusCode_FINAL},
+		Date:      parseFHIRInstantString(obj.CreatedDate),
+		Identifier: []*dtpb.Identifier{
+			{
+				Use:    &dtpb.Identifier_UseCode{Value: code.IdentifierUseCode_OFFICIAL},
+				System: &dtpb.Uri{Value: "http://" + endpoint + "/" + project},
+				Value:  &dtpb.String{Value: obj.Did},
+			},
+		},
+		Content: []*drpb.DocumentReference_Content{
+			{
+				Attachment: &dtpb.Attachment{
+					Creation:  parseFHIRDateTimeString(obj.CreatedDate),
+					Size:      &dtpb.Integer64{Value: obj.Size},
+					Title:     &dtpb.String{Value: obj.FileName},
+					Extension: extensions,
+					Url:       url,
 				},
-			})
-		} else if obj.SourceURL != nil {
-			dr.Content[0].Attachment.Extension = append(dr.Content[0].Attachment.Extension, &dtpb.Extension{
-				Url: &dtpb.Uri{Value: endpoint + FHIR_STRUCTURE_DEFINTION + "/source_path"},
-				Value: &dtpb.Extension_ValueX{
-					Choice: &dtpb.Extension_ValueX_Url{Url: &dtpb.Url{Value: *obj.SourceURL}},
+			},
+		},
+		Subject: &dtpb.Reference{
+			Reference: &dtpb.Reference_ResearchStudyId{
+				ResearchStudyId: &dtpb.ReferenceId{
+					Value: rSID,
 				},
-			})
-		}
+			},
+		},
 	}
 
 	return &cprb.ContainedResource{
@@ -62,4 +96,26 @@ func templateDocRef(metaStruc *MetaStructure, endpoint string, project string) *
 			DocumentReference: dr,
 		},
 	}
+}
+
+func createIDFromStrings(apiEndpoint string, resourceType string, projectID string, identifierString string) string {
+	// Use uuid.Nil as the namespace and the apiEndpoint string to create a consistent namespace UUID.
+	// This is necessary because `uuid.NewSHA1` requires a UUID namespace, not a string.
+	endpointNamespace := uuid.NewSHA1(uuid.Nil, []byte(apiEndpoint))
+
+	system := getSystem(apiEndpoint, identifierString, projectID)
+	nameString := fmt.Sprintf("%s/%s/%s|%s", projectID, resourceType, system, identifierString)
+
+	// Generate the final UUID using the endpoint-specific namespace.
+	return uuid.NewSHA1(endpointNamespace, []byte(nameString)).String()
+}
+
+func getSystem(apiEndpoint string, identifier string, projectID string) string {
+	if strings.Contains(identifier, "#") {
+		return strings.Split(identifier, "#")[0]
+	}
+	if strings.Contains(identifier, "|") {
+		return strings.Split(identifier, "|")[0]
+	}
+	return fmt.Sprintf("%s/%s", apiEndpoint, projectID)
 }

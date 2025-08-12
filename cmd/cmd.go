@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"github.com/calypr/forge/cmd/commit"
 	"github.com/calypr/forge/cmd/initialize"
 	"github.com/calypr/forge/cmd/meta"
 	"github.com/calypr/forge/cmd/ping"
@@ -18,14 +17,13 @@ development and project management tasks.`,
 }
 
 func init() {
+	RootCmd.AddCommand(initialize.InitCmd)
+	RootCmd.AddCommand(ping.PingCmd)
 	RootCmd.AddCommand(meta.MetaCmd)
 	RootCmd.AddCommand(validate.ValidateCmd)
+	RootCmd.AddCommand(validate.CheckEdgeCmd)
 	RootCmd.AddCommand(publish.PublishCmd)
-	RootCmd.AddCommand(ping.PingCmd)
-	RootCmd.AddCommand(commit.PreCommitCmd)
-	RootCmd.AddCommand(initialize.InitCmd)
 
 	// Don't show the help menu for that command every time there is an error
 	RootCmd.SilenceUsage = true
-
 }

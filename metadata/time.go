@@ -6,28 +6,18 @@ import (
 	dtpb "github.com/google/fhir/go/proto/google/fhir/proto/r5/core/datatypes_go_proto" // This will now house all primitives and complex datatypes
 )
 
-func parseFHIRInstantString(t time.Time) *dtpb.Instant {
-	timezoneName := t.Location().String()
-	if timezoneName == "" {
-		timezoneName = "UTC"
+func parseFHIRInstantString(dateStr string) *dtpb.Instant {
+	t, err := time.Parse(time.RFC3339, dateStr)
+	if err != nil {
+		return nil
 	}
-
-	return &dtpb.Instant{
-		ValueUs:   t.UnixMicro(),
-		Timezone:  timezoneName,
-		Precision: dtpb.Instant_MILLISECOND,
-	}
+	return &dtpb.Instant{ValueUs: t.UnixMicro()}
 }
 
-func parseFHIRDateTimeString(t time.Time) *dtpb.DateTime {
-	timezoneName := t.Location().String()
-	if timezoneName == "" {
-		timezoneName = "UTC"
+func parseFHIRDateTimeString(dateStr string) *dtpb.DateTime {
+	t, err := time.Parse(time.RFC3339, dateStr)
+	if err != nil {
+		return nil
 	}
-
-	return &dtpb.DateTime{
-		ValueUs:   t.UnixMicro(),
-		Timezone:  timezoneName,
-		Precision: dtpb.DateTime_MILLISECOND,
-	}
+	return &dtpb.DateTime{ValueUs: t.UnixMicro()}
 }
