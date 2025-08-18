@@ -10,12 +10,12 @@ import (
 	"time"
 
 	idxClient "github.com/calypr/git-drs/client"
-	fver "github.com/google/fhir/go/fhirversion"
-	"github.com/google/fhir/go/jsonformat"
-	code "github.com/google/fhir/go/proto/google/fhir/proto/r5/core/codes_go_proto"
-	dtpb "github.com/google/fhir/go/proto/google/fhir/proto/r5/core/datatypes_go_proto"
-	cprb "github.com/google/fhir/go/proto/google/fhir/proto/r5/core/resources/bundle_and_contained_resource_go_proto"
-	rspb "github.com/google/fhir/go/proto/google/fhir/proto/r5/core/resources/research_study_go_proto"
+	fver "github.com/ohsu-comp-bio/fhir/go/fhirversion"
+	"github.com/ohsu-comp-bio/fhir/go/jsonformat"
+	code "github.com/ohsu-comp-bio/fhir/go/proto/google/fhir/proto/r5/core/codes_go_proto"
+	dtpb "github.com/ohsu-comp-bio/fhir/go/proto/google/fhir/proto/r5/core/datatypes_go_proto"
+	cprb "github.com/ohsu-comp-bio/fhir/go/proto/google/fhir/proto/r5/core/resources/bundle_and_contained_resource_go_proto"
+	rspb "github.com/ohsu-comp-bio/fhir/go/proto/google/fhir/proto/r5/core/resources/research_study_go_proto"
 )
 
 const (

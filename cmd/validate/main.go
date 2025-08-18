@@ -6,6 +6,9 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/bmeg/golib"
+	"github.com/bmeg/grip/gripql"
+	"github.com/bytedance/sonic"
 	"github.com/cockroachdb/errors"
 
 	"github.com/calypr/forge/metadata"
@@ -110,9 +113,9 @@ var ValidateCmd = &cobra.Command{
 }
 
 var CheckEdgeCmd = &cobra.Command{
-	Use:   "check [path]",
-	Short: "given a path to a metadata directory, checks for missing vertices in graph",
-	Long:  "generates edges from FHIR .ndjson files then checks wether there exists any edges that reference vertices that do not exist",
+	Use:   "check-edge [path]",
+	Short: "Check for orphaned edges in graph data from FHIR .ndjson files",
+	Long:  "Generates graph elements from FHIR .ndjson files and checks for edges referencing non-existent vertices",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		path := args[0]
@@ -122,18 +125,99 @@ var CheckEdgeCmd = &cobra.Command{
 			return errors.Wrap(err, "failed to create schema")
 		}
 
+		fileResults := make(map[string]struct {
+			Rows       int
+			Edges      int
+			Vertices   int
+			FileErrors *multierror.Error
+		})
+		var allErrors = new(multierror.Error)
+		var allElements []*gripql.GraphElement
+
+		validateFile := func(filePath string) error {
+			rows := 0
+			var fileErrors = new(multierror.Error)
+
+			// Read and process .ndjson file
+			dataItems, err := golib.ReadFileLines(filePath)
+			if err != nil {
+				fileErrors = multierror.Append(fileErrors, errors.Wrapf(err, "failed to read NDJSON file %s", filePath))
+				fileResults[filePath] = struct {
+					Rows       int
+					Edges      int
+					Vertices   int
+					FileErrors *multierror.Error
+				}{Rows: rows, FileErrors: fileErrors}
+				return errors.Wrapf(err, "failed to read NDJSON file %s", filePath)
+			}
+
+			var class = ""
+			var ok bool
+			for data := range dataItems {
+				var sfgData map[string]any
+				if rows == 0 {
+					err := sonic.ConfigFastest.Unmarshal(data, &sfgData)
+					if err != nil {
+						return err
+					}
+					class, ok = sfgData["resourceType"].(string)
+					if !ok {
+						return fmt.Errorf("Expecting FHIR row to have resourceType field %s", sfgData)
+					}
+				}
+				err := sonic.ConfigFastest.Unmarshal(data, &sfgData)
+				if len(sfgData) == 0 {
+					continue
+				}
+				if err != nil {
+					fileErrors = multierror.Append(fileErrors, errors.Wrapf(err, "Sonic unmarshal error for row %d in %s", rows, filePath))
+				}
+				rows++
+
+				elements, err := sch.Sch.Generate(class, sfgData, map[string]any{})
+				if err != nil {
+					fileErrors = multierror.Append(fileErrors, errors.Wrapf(err, "failed to generate graph elements for row %d in %s", rows, filePath))
+					continue
+				}
+				allElements = append(allElements, elements...)
+			}
+
+			// Count edges and vertices for this file
+			edges := 0
+			vertices := 0
+			for _, el := range allElements {
+				if el.Vertex != nil {
+					vertices++
+				}
+				if el.Edge != nil {
+					edges++
+				}
+			}
+
+			fileResults[filePath] = struct {
+				Rows       int
+				Edges      int
+				Vertices   int
+				FileErrors *multierror.Error
+			}{Rows: rows, Edges: edges, Vertices: vertices, FileErrors: fileErrors}
+			return nil
+		}
+
 		info, err := os.Stat(path)
 		if err != nil {
 			return errors.Wrapf(err, "could not get file info for %s", path)
 		}
+
 		if info.IsDir() {
 			err = filepath.WalkDir(path, func(filePath string, d os.DirEntry, err error) error {
 				if err != nil {
 					return errors.Wrapf(err, "walk error at %s", filePath)
 				}
-				// Only process regular files with a .ndjson extension
 				if !d.IsDir() && strings.HasSuffix(d.Name(), metadata.NDJSON_EXT) {
-					validateFile(filePath)
+					err := validateFile(filePath)
+					if err != nil {
+						return err
+					}
 				}
 				return nil
 			})
@@ -141,9 +225,55 @@ var CheckEdgeCmd = &cobra.Command{
 				allErrors = multierror.Append(allErrors, err)
 			}
 		} else {
-			return fmt.Errorf("expecting directory of ndjson files but got %s instead", info.Name())
+			return fmt.Errorf("Expecting directory of .ndjson files where each file is a seperate FHIR resource type. %s in not a directory", path)
 		}
 
-		return nil
+		// Check for orphaned edges across all elements
+		orphanEdges := sch.FindOrphanEdges(allElements)
+
+		// Print summary
+		fmt.Printf("\n--- Edge Check Summary ---\n")
+		var totalFilesValidated int
+		var totalRowsValidated int
+		var totalEdges int
+		var totalVertices int
+
+		for file, result := range fileResults {
+			fmt.Printf("File: %s\n", file)
+			fmt.Printf("  Rows processed: %d\n", result.Rows)
+			fmt.Printf("  Vertices generated: %d\n", result.Vertices)
+			fmt.Printf("  Edges generated: %d\n", result.Edges)
+			if result.FileErrors != nil && len(result.FileErrors.Errors) > 0 {
+				fmt.Println("  File errors:")
+				for _, fileError := range result.FileErrors.Errors {
+					fmt.Printf("    - %v\n", fileError)
+				}
+			}
+			fmt.Printf("---\n")
+			totalFilesValidated++
+			totalRowsValidated += result.Rows
+			totalEdges += result.Edges
+			totalVertices += result.Vertices
+			if result.FileErrors != nil {
+				allErrors = multierror.Append(allErrors, result.FileErrors.Errors...)
+			}
+		}
+
+		fmt.Printf("Orphaned Edges: %d\n", len(orphanEdges))
+		if len(orphanEdges) > 0 {
+			fmt.Println("Orphaned edge details:")
+			for _, orphan := range orphanEdges {
+				fmt.Printf("  - %s\n", orphan)
+			}
+		}
+		fmt.Printf("\nOverall Totals:\n")
+		fmt.Printf("  Files processed: %d\n", totalFilesValidated)
+		fmt.Printf("  Rows processed: %d\n", totalRowsValidated)
+		fmt.Printf("  Vertices generated: %d\n", totalVertices)
+		fmt.Printf("  Edges generated: %d\n", totalEdges)
+		fmt.Printf("  Orphaned edges: %d\n", len(orphanEdges))
+		fmt.Printf("--------------------------\n")
+
+		return allErrors.ErrorOrNil()
 	},
 }

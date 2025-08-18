@@ -6,11 +6,11 @@ import (
 	"strings"
 
 	idxClient "github.com/calypr/git-drs/client"
-	code "github.com/google/fhir/go/proto/google/fhir/proto/r5/core/codes_go_proto"
-	dtpb "github.com/google/fhir/go/proto/google/fhir/proto/r5/core/datatypes_go_proto"
-	cprb "github.com/google/fhir/go/proto/google/fhir/proto/r5/core/resources/bundle_and_contained_resource_go_proto"
-	drpb "github.com/google/fhir/go/proto/google/fhir/proto/r5/core/resources/document_reference_go_proto"
 	"github.com/google/uuid"
+	code "github.com/ohsu-comp-bio/fhir/go/proto/google/fhir/proto/r5/core/codes_go_proto"
+	dtpb "github.com/ohsu-comp-bio/fhir/go/proto/google/fhir/proto/r5/core/datatypes_go_proto"
+	cprb "github.com/ohsu-comp-bio/fhir/go/proto/google/fhir/proto/r5/core/resources/bundle_and_contained_resource_go_proto"
+	drpb "github.com/ohsu-comp-bio/fhir/go/proto/google/fhir/proto/r5/core/resources/document_reference_go_proto"
 )
 
 const FHIR_STRUCTURE_DEFINITION = "/fhir/StructureDefinition"
