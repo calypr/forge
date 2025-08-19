@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/bmeg/golib"
 	"github.com/bmeg/grip/gripql"
@@ -34,25 +35,33 @@ var ValidateCmd = &cobra.Command{
 			return errors.Wrap(err, "failed to create schema")
 		}
 
-		fileResults := make(map[string]struct {
-			Rows       int
-			Errors     int
-			FileErrors *multierror.Error // Store the specific errors for this file
-		})
 		var allErrors = new(multierror.Error)
+		var totalFilesValidated, totalRowsValidated, totalErrors int
 
-		// A helper function to validate a single file and update the results
+		// A helper function to validate a single file and print results immediately
 		validateFile := func(filePath string) {
 			rows, errorsCount, fileErrors, fileErr := sch.Validate(filePath)
 			if fileErr != nil {
-				allErrors = multierror.Append(allErrors, errors.Wrapf(fileErr, "validation failed for file %s", filePath))
+				allErrors = multierror.Append(allErrors,
+					errors.Wrapf(fileErr, "validation failed for file %s", filePath))
 				return
 			}
-			fileResults[filePath] = struct {
-				Rows       int
-				Errors     int
-				FileErrors *multierror.Error
-			}{Rows: rows, Errors: errorsCount, FileErrors: fileErrors}
+
+			// Update totals
+			totalFilesValidated++
+			totalRowsValidated += rows
+			totalErrors += errorsCount
+
+			// Print results for this file immediately
+			fmt.Printf("\nFile: %s\n", filePath)
+			fmt.Printf("  Rows validated: %d\n", rows)
+			fmt.Printf("  Errors found: %d\n", errorsCount)
+			if fileErrors != nil {
+				for _, fe := range fileErrors.Errors {
+					fmt.Printf("    - %v\n", fe)
+				}
+			}
+			fmt.Printf("---")
 		}
 
 		info, err := os.Stat(path)
@@ -65,7 +74,6 @@ var ValidateCmd = &cobra.Command{
 				if err != nil {
 					return errors.Wrapf(err, "walk error at %s", filePath)
 				}
-				// Only process regular files with a .ndjson extension
 				if !d.IsDir() && strings.HasSuffix(d.Name(), metadata.NDJSON_EXT) {
 					validateFile(filePath)
 				}
@@ -81,32 +89,11 @@ var ValidateCmd = &cobra.Command{
 			validateFile(path)
 		}
 
-		fmt.Printf("\n--- Validation Summary ---\n")
-		var totalFilesValidated int
-		var totalRowsValidated int
-		var totalErrors int
-
-		for file, result := range fileResults {
-			fmt.Printf("File: %s\n", file)
-			fmt.Printf("  Rows validated: %d\n", result.Rows)
-			fmt.Printf("  Errors found: %d\n", result.Errors)
-			// Print individual errors for each file
-			if result.FileErrors != nil {
-				for _, fileError := range result.FileErrors.Errors {
-					fmt.Printf("    - %v\n", fileError)
-				}
-			}
-			fmt.Printf("---\n")
-			totalFilesValidated++
-			totalRowsValidated += result.Rows
-			totalErrors += result.Errors
-		}
-
-		fmt.Printf("Overall Totals:\n")
+		fmt.Printf("\n--- Overall Totals ---\n")
 		fmt.Printf("  Files validated: %d\n", totalFilesValidated)
 		fmt.Printf("  Rows validated: %d\n", totalRowsValidated)
 		fmt.Printf("  Errors: %d\n", totalErrors)
-		fmt.Printf("--------------------------\n")
+		fmt.Printf("----------------------\n")
 
 		return allErrors.ErrorOrNil()
 	},
@@ -119,7 +106,6 @@ var CheckEdgeCmd = &cobra.Command{
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		path := args[0]
-
 		sch, err := schema.NewSchema()
 		if err != nil {
 			return errors.Wrap(err, "failed to create schema")
@@ -133,59 +119,96 @@ var CheckEdgeCmd = &cobra.Command{
 		})
 		var allErrors = new(multierror.Error)
 		var allElements []*gripql.GraphElement
+		var allElementsMu sync.Mutex
 
 		validateFile := func(filePath string) error {
 			rows := 0
 			var fileErrors = new(multierror.Error)
+			var fileElements []*gripql.GraphElement
+			var fileMu sync.Mutex
 
-			// Read and process .ndjson file
 			dataItems, err := golib.ReadFileLines(filePath)
 			if err != nil {
-				fileErrors = multierror.Append(fileErrors, errors.Wrapf(err, "failed to read NDJSON file %s", filePath))
+				fileErrors = multierror.Append(fileErrors,
+					errors.Wrapf(err, "failed to read NDJSON file %s", filePath))
 				fileResults[filePath] = struct {
 					Rows       int
 					Edges      int
 					Vertices   int
 					FileErrors *multierror.Error
 				}{Rows: rows, FileErrors: fileErrors}
-				return errors.Wrapf(err, "failed to read NDJSON file %s", filePath)
+				return err
 			}
 
-			var class = ""
-			var ok bool
-			for data := range dataItems {
-				var sfgData map[string]any
-				if rows == 0 {
-					err := sonic.ConfigFastest.Unmarshal(data, &sfgData)
-					if err != nil {
-						return err
-					}
-					class, ok = sfgData["resourceType"].(string)
-					if !ok {
-						return fmt.Errorf("Expecting FHIR row to have resourceType field %s", sfgData)
-					}
-				}
-				err := sonic.ConfigFastest.Unmarshal(data, &sfgData)
-				if len(sfgData) == 0 {
-					continue
-				}
-				if err != nil {
-					fileErrors = multierror.Append(fileErrors, errors.Wrapf(err, "Sonic unmarshal error for row %d in %s", rows, filePath))
-				}
-				rows++
+			// Detect class from first row
+			var class string
+			firstLine := true
 
-				elements, err := sch.Sch.Generate(class, sfgData, map[string]any{})
-				if err != nil {
-					fileErrors = multierror.Append(fileErrors, errors.Wrapf(err, "failed to generate graph elements for row %d in %s", rows, filePath))
-					continue
-				}
-				allElements = append(allElements, elements...)
+			procChan := make(chan map[string]any, 100)
+			var wg sync.WaitGroup
+			numWorkers := 10
+			wg.Add(numWorkers)
+
+			// Workers
+			for range numWorkers {
+				go func() {
+					defer wg.Done()
+					for sfgData := range procChan {
+						elements, err := sch.Sch.Generate(class, sfgData, map[string]any{})
+						if err != nil {
+							fileMu.Lock()
+							fileErrors = multierror.Append(fileErrors,
+								errors.Wrapf(err, "failed to generate graph elements for row in %s", filePath))
+							fileMu.Unlock()
+							continue
+						}
+						fileMu.Lock()
+						fileElements = append(fileElements, elements...)
+						fileMu.Unlock()
+					}
+				}()
 			}
 
-			// Count edges and vertices for this file
+			// Producer
+			lineNum := 0
+			go func() {
+				defer close(procChan)
+				for data := range dataItems {
+					if len(data) == 0 {
+						continue
+					}
+					lineNum++
+					var sfgData map[string]any
+					if err := sonic.ConfigFastest.Unmarshal(data, &sfgData); err != nil {
+						fileMu.Lock()
+						fileErrors = multierror.Append(fileErrors,
+							errors.Wrapf(err, "Sonic unmarshal error for row %d in %s", lineNum, filePath))
+						fileMu.Unlock()
+						continue
+					}
+
+					if firstLine {
+						var ok bool
+						class, ok = sfgData["resourceType"].(string)
+						if !ok {
+							fileMu.Lock()
+							fileErrors = multierror.Append(fileErrors,
+								fmt.Errorf("Expecting FHIR row to have resourceType field %s", sfgData))
+							fileMu.Unlock()
+						}
+						firstLine = false
+					}
+					rows++
+					procChan <- sfgData
+				}
+			}()
+
+			wg.Wait()
+
+			// Count edges and vertices
 			edges := 0
 			vertices := 0
-			for _, el := range allElements {
+			for _, el := range fileElements {
 				if el.Vertex != nil {
 					vertices++
 				}
@@ -193,6 +216,11 @@ var CheckEdgeCmd = &cobra.Command{
 					edges++
 				}
 			}
+
+			// Add file’s elements to global list
+			allElementsMu.Lock()
+			allElements = append(allElements, fileElements...)
+			allElementsMu.Unlock()
 
 			fileResults[filePath] = struct {
 				Rows       int
@@ -214,8 +242,7 @@ var CheckEdgeCmd = &cobra.Command{
 					return errors.Wrapf(err, "walk error at %s", filePath)
 				}
 				if !d.IsDir() && strings.HasSuffix(d.Name(), metadata.NDJSON_EXT) {
-					err := validateFile(filePath)
-					if err != nil {
+					if err := validateFile(filePath); err != nil {
 						return err
 					}
 				}
@@ -225,7 +252,7 @@ var CheckEdgeCmd = &cobra.Command{
 				allErrors = multierror.Append(allErrors, err)
 			}
 		} else {
-			return fmt.Errorf("Expecting directory of .ndjson files where each file is a seperate FHIR resource type. %s in not a directory", path)
+			return fmt.Errorf("Expecting directory of .ndjson files where each file is a separate FHIR resource type. %s is not a directory", path)
 		}
 
 		// Check for orphaned edges across all elements
@@ -233,10 +260,7 @@ var CheckEdgeCmd = &cobra.Command{
 
 		// Print summary
 		fmt.Printf("\n--- Edge Check Summary ---\n")
-		var totalFilesValidated int
-		var totalRowsValidated int
-		var totalEdges int
-		var totalVertices int
+		var totalFilesValidated, totalRowsValidated, totalEdges, totalVertices int
 
 		for file, result := range fileResults {
 			fmt.Printf("File: %s\n", file)
