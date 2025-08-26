@@ -6,7 +6,7 @@ import (
 )
 
 var PublishCmd = &cobra.Command{
-	Use:   "publish",
+	Use:   "publish <github_personal_access_token>",
 	Short: "create metadata upload job for FHIR ndjson files",
 	Long:  `The 'publish' command is how metadata is handled in calypr.`,
 	Args:  cobra.ExactArgs(1),

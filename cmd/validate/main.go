@@ -24,7 +24,7 @@ import (
 // Defining it as a go string and loading from the package is another option.
 // Curling it as part of a build script is another option.
 var ValidateCmd = &cobra.Command{
-	Use:   "validate [path]",
+	Use:   "validate <path_to_metadata_file(s)>",
 	Short: "validate data files given a jsonschema and a ndjson data target file or directory",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -100,7 +100,7 @@ var ValidateCmd = &cobra.Command{
 }
 
 var CheckEdgeCmd = &cobra.Command{
-	Use:   "check-edge [path]",
+	Use:   "check-edge <path_to_metadata_files>",
 	Short: "Check for orphaned edges in graph data from FHIR .ndjson files",
 	Long:  "Generates graph elements from FHIR .ndjson files and checks for edges referencing non-existent vertices",
 	Args:  cobra.ExactArgs(1),

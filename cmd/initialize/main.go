@@ -18,8 +18,11 @@ var (
 
 var InitCmd = &cobra.Command{
 	Use:   "init",
-	Short: "create metadata upload job for FHIR ndjson files",
-	Long:  `The 'push' command is how metadata is handled in calypr.`,
+	Short: "Initialize repo and server access for forge",
+	Long: "Description:" +
+		"\n  Initialize repo and server access for git-drs with a gen3 server" +
+		"\n   ~ Provide a url, bucket, profile, project ID, and either a credentials file or token",
+	Args: cobra.ExactArgs(0),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		err := drsInit.Init("gen3", apiEndpoint, bucket, credFile, fenceToken, profile, project, terraProject)
 		if err != nil {

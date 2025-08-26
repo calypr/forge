@@ -8,10 +8,9 @@ import (
 var outPath string
 
 var MetaCmd = &cobra.Command{
-	Use:   "meta",
-	Short: "Tools for managing metadata within Forge projects.",
-	Long: `The 'meta' command group provides specialized operations for
-initializing, checking the status, and interacting with metadata.`,
+	Use:     "meta",
+	Short:   "Autogenerate metadata based off of files that have been uploaded",
+	Long:    `Not needed for expected user workflow. Useful for debugging server side operations only.`,
 	Example: "forge meta",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		err := metadata.RunMetaInit(outPath)
