@@ -2,29 +2,43 @@ package metadata
 
 import (
 	"fmt"
-	"path"
 	"strings"
 
 	idxClient "github.com/calypr/git-drs/client"
 	"github.com/google/uuid"
-	code "github.com/ohsu-comp-bio/fhir/go/proto/google/fhir/proto/r5/core/codes_go_proto"
-	dtpb "github.com/ohsu-comp-bio/fhir/go/proto/google/fhir/proto/r5/core/datatypes_go_proto"
-	cprb "github.com/ohsu-comp-bio/fhir/go/proto/google/fhir/proto/r5/core/resources/bundle_and_contained_resource_go_proto"
-	drpb "github.com/ohsu-comp-bio/fhir/go/proto/google/fhir/proto/r5/core/resources/document_reference_go_proto"
+	code "github.com/google/fhir/go/proto/google/fhir/proto/r5/core/codes_go_proto"
+	dtpb "github.com/google/fhir/go/proto/google/fhir/proto/r5/core/datatypes_go_proto"
+	cprb "github.com/google/fhir/go/proto/google/fhir/proto/r5/core/resources/bundle_and_contained_resource_go_proto"
+	drpb "github.com/google/fhir/go/proto/google/fhir/proto/r5/core/resources/document_reference_go_proto"
 )
 
-const FHIR_STRUCTURE_DEFINITION = "/fhir/StructureDefinition"
-const RESEARCH_STUDY = "ResearchStudy"
-const FILE_PREFIX = "file://"
+const (
+	FHIR_STRUCTURE_DEFINITION = "/fhir/StructureDefinition"
+	FILE_PREFIX               = "file://"
+	RESEARCH_STUDY            = "ResearchStudy"
+	DOCUMENT_RESOURCE         = "DocumentReference"
+	DIRECTORY_RESOURCE        = "Directory"
+	DIR_ID_PREFIX             = DIRECTORY_RESOURCE + "/"
+)
 
-func CreateReference(resourceType, resourceId string) *dtpb.Reference {
+var DirectoryNamespaceUUID = uuid.MustParse("e61f8f3c-8f2c-4b5c-8d19-9f7918f8f483")
+
+func CreateDocReferenceReference(resourceId string) *dtpb.Reference {
 	return &dtpb.Reference{
-		Type: &dtpb.Uri{
-			Value: resourceType,
+		Reference: &dtpb.Reference_DocumentReferenceId{
+			DocumentReferenceId: &dtpb.ReferenceId{
+				Value: resourceId,
+			},
 		},
-		Reference: &dtpb.Reference_Uri{
-			Uri: &dtpb.String{
-				Value: path.Join(resourceType, resourceId),
+	}
+}
+
+// General Resource reference
+func CreateResourceReference(resourceId string) *dtpb.Reference {
+	return &dtpb.Reference{
+		Reference: &dtpb.Reference_ResourceId{
+			ResourceId: &dtpb.ReferenceId{
+				Value: resourceId,
 			},
 		},
 	}

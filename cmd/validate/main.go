@@ -1,6 +1,7 @@
 package validate
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -18,11 +19,15 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// Cmd is the declaration of the command line
-// A bit of a question how the schema should be fetched.
-// Submodule to iceberg with the default path pathing into it is one option.
-// Defining it as a go string and loading from the package is another option.
-// Curling it as part of a build script is another option.
+// Holds the value of the --out-dir flag
+var outputDir string
+
+func init() {
+	// Add the --out-dir flag to the check-edge command
+	CheckEdgeCmd.Flags().StringVarP(&outputDir, "out-dir", "o", "", "Directory to save vertices and edges files")
+}
+
+// ValidateCmd remains unchanged
 var ValidateCmd = &cobra.Command{
 	Use:   "validate <path_to_metadata_file(s)>",
 	Short: "validate data files given a jsonschema and a ndjson data target file or directory",
@@ -253,6 +258,46 @@ var CheckEdgeCmd = &cobra.Command{
 			}
 		} else {
 			return fmt.Errorf("Expecting directory of .ndjson files where each file is a separate FHIR resource type. %s is not a directory", path)
+		}
+
+		if outputDir != "" {
+			fmt.Printf("\n--- Writing output files to %s ---\n", outputDir)
+			if err := os.MkdirAll(outputDir, 0755); err != nil {
+				return errors.Wrapf(err, "failed to create output directory: %s", outputDir)
+			}
+
+			vertexPath := filepath.Join(outputDir, "vertices.ndjson")
+			edgePath := filepath.Join(outputDir, "edges.ndjson")
+
+			vertexFile, err := os.Create(vertexPath)
+			if err != nil {
+				return errors.Wrapf(err, "failed to create vertex file: %s", vertexPath)
+			}
+			defer vertexFile.Close()
+
+			edgeFile, err := os.Create(edgePath)
+			if err != nil {
+				return errors.Wrapf(err, "failed to create edge file: %s", edgePath)
+			}
+			defer edgeFile.Close()
+
+			vertexEncoder := json.NewEncoder(vertexFile)
+			edgeEncoder := json.NewEncoder(edgeFile)
+
+			for _, element := range allElements {
+				if element.Vertex != nil {
+					if err := vertexEncoder.Encode(element.Vertex); err != nil {
+						allErrors = multierror.Append(allErrors, errors.Wrap(err, "failed to write vertex"))
+					}
+				}
+				if element.Edge != nil {
+					if err := edgeEncoder.Encode(element.Edge); err != nil {
+						allErrors = multierror.Append(allErrors, errors.Wrap(err, "failed to write edge"))
+					}
+				}
+			}
+			fmt.Printf("✓ Vertices written to: %s\n", vertexPath)
+			fmt.Printf("✓ Edges written to: %s\n", edgePath)
 		}
 
 		// Check for orphaned edges across all elements

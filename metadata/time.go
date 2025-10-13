@@ -3,7 +3,7 @@ package metadata
 import (
 	"time"
 
-	dtpb "github.com/ohsu-comp-bio/fhir/go/proto/google/fhir/proto/r5/core/datatypes_go_proto" // This will now house all primitives and complex datatypes
+	dtpb "github.com/google/fhir/go/proto/google/fhir/proto/r5/core/datatypes_go_proto" // This will now house all primitives and complex datatypes
 )
 
 func parseFHIRInstantString(dateStr string) *dtpb.Instant {

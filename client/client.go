@@ -12,8 +12,8 @@ import (
 	token "github.com/bmeg/grip-graphql/middleware"
 	drsConfig "github.com/calypr/git-drs/config"
 
-	"github.com/calypr/data-client/data-client/commonUtils"
-	"github.com/calypr/data-client/data-client/jwt"
+	"github.com/calypr/data-client/client/commonUtils"
+	"github.com/calypr/data-client/client/jwt"
 )
 
 type Gen3Client struct {

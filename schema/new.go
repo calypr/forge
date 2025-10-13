@@ -21,6 +21,7 @@ type Schema struct {
 func NewSchema() (*Schema, error) {
 	cli, err := client.NewGen3Client()
 	if err != nil {
+		fmt.Println("THE ERR IS HERE1: ", err)
 		return nil, err
 	}
 	compiler := jsonschema.NewCompiler()
