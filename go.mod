@@ -7,10 +7,10 @@ require (
 	github.com/bmeg/grip v0.0.0-20250915204302-93cb1e8117c8
 	github.com/bmeg/grip-graphql v0.0.0-20250924224746-dc7f74b4040f
 	github.com/bmeg/jsonschema/v6 v6.0.4
-	github.com/bmeg/jsonschemagraph v0.0.4-0.20250828230703-257ca9afd85a
+	github.com/bmeg/jsonschemagraph v0.0.4-0.20251015150525-9ed100499f63
 	github.com/bytedance/sonic v1.14.0
 	github.com/calypr/data-client v0.0.0-20251009221450-92246d753b31
-	github.com/calypr/git-drs v0.0.0-20251013210804-290ee51e166b
+	github.com/calypr/git-drs v0.0.0-20251014201703-c83676369df6
 	github.com/cockroachdb/errors v1.11.3
 	github.com/go-git/go-git/v5 v5.12.0
 	github.com/google/fhir/go v0.7.5-0.20250925033537-1f5b5b9427ff
@@ -37,6 +37,7 @@ require (
 	github.com/go-git/gcfg v1.5.1-0.20230307220236-3a3c6141e376 // indirect
 	github.com/go-git/go-billy/v5 v5.6.2 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
+	github.com/golang-jwt/jwt/v4 v4.5.2 // indirect
 	github.com/golang-jwt/jwt/v5 v5.3.0 // indirect
 	github.com/golang/groupcache v0.0.0-20241129210726-2c02b8208cf8 // indirect
 	github.com/golang/protobuf v1.5.4 // indirect

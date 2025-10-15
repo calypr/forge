@@ -4,13 +4,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"path/filepath"
-	"strings"
 
 	"github.com/calypr/forge/client/sower"
-	"github.com/calypr/forge/metadata"
 	"github.com/calypr/forge/utils/gitutil"
-	idxClient "github.com/calypr/git-drs/client"
 )
 
 // This job name must match the sower config otherwise job won't start
@@ -56,34 +52,7 @@ func RunPublish(token string) error {
 		return err
 	}
 
-	cfg, err := idxClient.NewIndexDClient(&idxClient.NoOpLogger{})
-	if err != nil {
-		return err
-	}
-	idxCl, ok := cfg.(*idxClient.IndexDClient)
-	if !ok {
-		return fmt.Errorf("Config is not IndexDClient")
-	}
-	recs, err := idxCl.ListObjectsByProject(idxCl.ProjectId)
-	if err != nil {
-		return fmt.Errorf("error listing indexd records: %v", err)
-	}
-
-	fmt.Printf("Searching for files for project: %s\n", idxCl.ProjectId)
-	files := []sower.File{}
-	for rec := range recs {
-		if filepath.Dir(rec.Record.FileName) == "META" &&
-			strings.HasSuffix(rec.Record.FileName, metadata.NDJSON_EXT) {
-			sowerFile := sower.File{
-				FileTitle: filepath.Base(rec.Record.FileName),
-				FilePath:  rec.Record.FileName,
-			}
-			files = append(files, sowerFile)
-		}
-	}
-
 	dispatchArgs := &sower.DispatchArgs{
-		Files:          files,
 		BucketName:     sc.BucketName,
 		ProjectId:      sc.ProjectId,
 		APIEndpoint:    sc.Cred.APIEndpoint,

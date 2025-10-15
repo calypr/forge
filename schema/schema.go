@@ -16,7 +16,7 @@ var CalyprSchema = `
           "href": "{id}",
           "rel": "child_Directory",
           "targetHints": {
-            "backref": ["child_directory"],
+            "backref": [],
             "direction": ["outbound"],
             "multiplicity": ["has_many"],
             "regex_match": ["Directory/*"]
@@ -33,7 +33,7 @@ var CalyprSchema = `
           "href": "{id}",
           "rel": "child_DocumentReference",
           "targetHints": {
-            "backref": ["child_directory"],
+            "backref": [],
             "direction": ["outbound"],
             "multiplicity": ["has_many"],
             "regex_match": ["DocumentReference/*"]
@@ -39121,7 +39121,7 @@ var CalyprSchema = `
           "href": "{id}",
           "rel": "rootDir_Directory",
           "targetHints": {
-            "backref": ["rootdir_directory"],
+            "backref": [],
             "direction": ["outbound"],
             "multiplicity": ["has_one"],
             "regex_match": ["Directory/*"]
@@ -39130,7 +39130,7 @@ var CalyprSchema = `
             "$ref": "http://graph-fhir.io/schema/0.0.2/Directory"
           },
           "templatePointers": {
-            "id": "/rootDir/-/reference"
+            "id": "/rootDir/reference"
           },
           "templateRequired": ["id"]
         },

@@ -36,7 +36,6 @@ type File struct {
 }
 
 type DispatchArgs struct {
-	Files          []File `json:"files"`
 	Method         string `json:"method"`
 	ProjectId      string `json:"projectId"`
 	Profile        string `json:"profile"`
