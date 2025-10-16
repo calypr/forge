@@ -66,7 +66,7 @@ func (sc *SowerClient) DispatchJob(name string, args *DispatchArgs) (*DispatchRe
 	if resp.Err != nil {
 		return nil, resp.Err
 	}
-	fmt.Println("RESP: ", string(resp.Body))
+	fmt.Println("Response: ", string(resp.Body))
 
 	return nil, nil
 }

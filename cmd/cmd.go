@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"github.com/calypr/forge/cmd/empty"
 	"github.com/calypr/forge/cmd/initialize"
 	"github.com/calypr/forge/cmd/meta"
 	"github.com/calypr/forge/cmd/ping"
@@ -23,6 +24,7 @@ func init() {
 	RootCmd.AddCommand(validate.ValidateCmd)
 	RootCmd.AddCommand(validate.CheckEdgeCmd)
 	RootCmd.AddCommand(publish.PublishCmd)
+	RootCmd.AddCommand(empty.EmptyCmd)
 
 	// Don't show the help menu for that command every time there is an error
 	RootCmd.SilenceUsage = true

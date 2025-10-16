@@ -13,6 +13,28 @@ import (
 const FHIR_JOB_NAME = "fhir_import_export"
 const SOURCE_GH_USER_ENDPOINT = "https://source.ohsu.edu/api/v3/user"
 const POD_PUT_METHOD = "put"
+const POD_DELETE_METHOD = "delete"
+
+func RunEmpty(projectId string) error {
+	sc, err := sower.NewSowerClient()
+	if err != nil {
+		return err
+	}
+	dispatchArgs := &sower.DispatchArgs{
+		ProjectId:   sc.ProjectId,
+		APIEndpoint: sc.Cred.APIEndpoint,
+		Profile:     sc.Cred.Profile,
+		Method:      POD_DELETE_METHOD,
+	}
+	resp, err := sc.DispatchJob(
+		FHIR_JOB_NAME,
+		dispatchArgs,
+	)
+	if err != nil || resp != nil {
+		return fmt.Errorf("failed to dispatch job: %v: %w", resp, err)
+	}
+	return nil
+}
 
 func RunPublish(token string) error {
 	err := checkGHPAccessToken(token)
@@ -68,11 +90,9 @@ func RunPublish(token string) error {
 		FHIR_JOB_NAME,
 		dispatchArgs,
 	)
-	if err != nil {
-		return fmt.Errorf("failed to dispatch job: %w", err)
+	if err != nil || resp != nil {
+		return fmt.Errorf("failed to dispatch job: %v: %w", resp, err)
 	}
-	fmt.Println("Sower Dispatch Response: ", resp)
-
 	return nil
 }
 
