@@ -136,7 +136,7 @@ func BuildDirectoryTreeFromDocRef(docRef *drpb.DocumentReference) {
 		return
 	}
 
-	rawURL := docRef.Content[0].GetAttachment().GetUrl().GetValue()
+	rawURL := docRef.Content[0].GetAttachment().GetTitle().GetValue()
 	u, err := url.Parse(rawURL)
 	if err != nil {
 		log.Printf("Error parsing URL %s for DocRef %s: %v\n", rawURL, docRef.GetId().GetValue(), err)
