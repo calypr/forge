@@ -2,6 +2,7 @@ package metadata
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -145,16 +146,23 @@ func getResearchStudy(fhirDirectory string, projectId string, endpoint string, m
 			return "", fmt.Errorf("failed to read existing ResearchStudy file: %v", err)
 		}
 
+		lines := bytes.Split(jsonBytes, []byte{'\n'})
+		unmarshalBytes := jsonBytes
+		// If there is more than 1 line in the file, use the first line research study
+		if len(lines) > 0 && len(lines[0]) > 0 {
+			unmarshalBytes = lines[0]
+		}
+
 		// Try to unmarshal existing bytes into FHIR resource to get the ID (use unmarshaller)
-		cr, err := unmarshaller.UnmarshalR5(jsonBytes)
+		cr, err := unmarshaller.UnmarshalR5(unmarshalBytes)
 		if err != nil {
 			// If the protobuf unmarshaller fails, attempt to decode the plain JSON to find "id"
 			var tmp map[string]any
-			if err2 := json.Unmarshal(jsonBytes, &tmp); err2 == nil {
+			if err2 := json.Unmarshal(unmarshalBytes, &tmp); err2 == nil {
 				if idv, ok := tmp["id"].(string); ok && idv != "" {
 					// we have an ID but couldn't unmarshal via fhir unmarshaller; still inject rootDir
 					rootDir := getOrCreateRootDirectory()
-					newBytes, injErr := injectRootDir(jsonBytes, "Directory/"+rootDir.Id)
+					newBytes, injErr := injectRootDir(unmarshalBytes, "Directory/"+rootDir.Id)
 					if injErr != nil {
 						return "", injErr
 					}
@@ -172,11 +180,15 @@ func getResearchStudy(fhirDirectory string, projectId string, endpoint string, m
 
 		// inject or update rootDir in the existing JSON and write back
 		rootDir := getOrCreateRootDirectory()
-		newBytes, err := injectRootDir(jsonBytes, "Directory/"+rootDir.Id)
+		newFirstLineBytes, err := injectRootDir(unmarshalBytes, "Directory/"+rootDir.Id)
 		if err != nil {
 			return "", fmt.Errorf("failed to inject rootDir into existing ResearchStudy: %v", err)
 		}
-		if err := os.WriteFile(rsPath, append(newBytes, '\n'), 0644); err != nil {
+
+		lines[0] = newFirstLineBytes
+		contentToWrite := bytes.Join(lines, []byte{'\n'})
+
+		if err := os.WriteFile(rsPath, contentToWrite, 0644); err != nil {
 			return "", fmt.Errorf("error writing updated ResearchStudy file %s: %v", rsPath, err)
 		}
 		fmt.Printf("Updated ResearchStudy at %s with rootDir field\n", rsPath)
