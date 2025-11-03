@@ -9,8 +9,8 @@ require (
 	github.com/bmeg/jsonschema/v6 v6.0.4
 	github.com/bmeg/jsonschemagraph v0.0.4-0.20251015150525-9ed100499f63
 	github.com/bytedance/sonic v1.14.0
-	github.com/calypr/data-client v0.0.0-20251009221450-92246d753b31
-	github.com/calypr/git-drs v0.0.0-20251016202529-49a38c0d4a28
+	github.com/calypr/data-client v0.0.0-20251103160310-cc0ca9939fe7
+	github.com/calypr/git-drs v0.0.0-20251103160406-847061641992
 	github.com/cockroachdb/errors v1.11.3
 	github.com/go-git/go-git/v5 v5.12.0
 	github.com/google/fhir/go v0.7.5-0.20250925033537-1f5b5b9427ff

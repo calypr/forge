@@ -31,10 +31,10 @@ github.com/bytedance/sonic v1.14.0/go.mod h1:WoEbx8WTcFJfzCe0hbmyTGrfjt8PzNEBdxl
 github.com/bytedance/sonic/loader v0.1.1/go.mod h1:ncP89zfokxS5LZrJxl5z0UJcsk4M4yY2JpfqGeCtNLU=
 github.com/bytedance/sonic/loader v0.3.0 h1:dskwH8edlzNMctoruo8FPTJDF3vLtDT0sXZwvZJyqeA=
 github.com/bytedance/sonic/loader v0.3.0/go.mod h1:N8A3vUdtUebEY2/VQC0MyhYeKUFosQU6FxH2JmUe6VI=
-github.com/calypr/data-client v0.0.0-20251009221450-92246d753b31 h1:jF+g0snsghxCnf07YEPo7Id4Bzy0zAxtM9wLbQJnRp0=
-github.com/calypr/data-client v0.0.0-20251009221450-92246d753b31/go.mod h1:w0FrIP2TNqsBJcHUm3M04/5ZKKX7MHKRrYlYDU/A4sI=
-github.com/calypr/git-drs v0.0.0-20251016202529-49a38c0d4a28 h1:PFSUVjVTXbTZ+pFerMJdC7F8aRhqOIgrgb5gs+05RNY=
-github.com/calypr/git-drs v0.0.0-20251016202529-49a38c0d4a28/go.mod h1:etacj0mtHlt+tYYu5j3yy2In8/XPKBi0CVILUsSJ1PA=
+github.com/calypr/data-client v0.0.0-20251103160310-cc0ca9939fe7 h1:NVO5FpugLr+6rhTS/er1B2Ui8RIykbFL+IJcOXDdqBo=
+github.com/calypr/data-client v0.0.0-20251103160310-cc0ca9939fe7/go.mod h1:w0FrIP2TNqsBJcHUm3M04/5ZKKX7MHKRrYlYDU/A4sI=
+github.com/calypr/git-drs v0.0.0-20251103160406-847061641992 h1:z/EIrWehDHLWNCcVYLth6w3Hvppi8xWMKkzgtmjqFfs=
+github.com/calypr/git-drs v0.0.0-20251103160406-847061641992/go.mod h1:qEwYFbRiLKwblNBPFRWtLkGU4aqTp6r2Dwi2Oe7IN4Y=
 github.com/census-instrumentation/opencensus-proto v0.2.1/go.mod h1:f6KPmirojxKA12rnyqOA5BBL4O983OfeGPqjHWSTneU=
 github.com/client9/misspell v0.3.4/go.mod h1:qj6jICC3Q7zFZvVWo7KLAzC3yx5G7kyvSDkc90ppPyw=
 github.com/clipperhouse/uax29/v2 v2.2.0 h1:ChwIKnQN3kcZteTXMgb1wztSgaU+ZemkgWdohwgs8tY=
