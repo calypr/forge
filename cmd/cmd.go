@@ -21,11 +21,14 @@ func init() {
 	RootCmd.AddCommand(initialize.InitCmd)
 	RootCmd.AddCommand(ping.PingCmd)
 	RootCmd.AddCommand(meta.MetaCmd)
-	RootCmd.AddCommand(validate.ValidateCmd)
-	RootCmd.AddCommand(validate.CheckEdgeCmd)
 	RootCmd.AddCommand(publish.PublishCmd)
 	RootCmd.AddCommand(empty.EmptyCmd)
 
-	// Don't show the help menu for that command every time there is an error
-	RootCmd.SilenceUsage = true
+	validate.ValidateParentCmd.AddCommand(validate.ValidateConfigCmd)
+	validate.ValidateParentCmd.AddCommand(validate.ValidateDataCmd)
+	validate.ValidateParentCmd.AddCommand(validate.ValidateEdgeCmd)
+
+	RootCmd.AddCommand(validate.ValidateParentCmd)
+
+	RootCmd.SilenceUsage = true // Hide usage on error
 }

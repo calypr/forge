@@ -4,12 +4,13 @@ go 1.24.2
 
 require (
 	github.com/bmeg/golib v0.0.0-20200725232156-e799a31439fc
-	github.com/bmeg/grip v0.0.0-20250915204302-93cb1e8117c8
-	github.com/bmeg/grip-graphql v0.0.0-20250924224746-dc7f74b4040f
+	github.com/bmeg/grip v0.0.0-20251106174949-7f0784126fbb
+	github.com/bmeg/grip-graphql v0.0.0-20251106183540-8b2f286248b3
 	github.com/bmeg/jsonschema/v6 v6.0.4
-	github.com/bmeg/jsonschemagraph v0.0.4-0.20251015150525-9ed100499f63
+	github.com/bmeg/jsonschemagraph v0.0.4-0.20251017205345-236d2de9887c
 	github.com/bytedance/sonic v1.14.0
 	github.com/calypr/data-client v0.0.0-20251103160310-cc0ca9939fe7
+	github.com/calypr/gecko v0.0.0-20251110184938-909cb1b668e2
 	github.com/calypr/git-drs v0.0.0-20251103160406-847061641992
 	github.com/cockroachdb/errors v1.11.3
 	github.com/go-git/go-git/v5 v5.12.0
@@ -33,6 +34,7 @@ require (
 	github.com/cockroachdb/redact v1.1.5 // indirect
 	github.com/cyphar/filepath-securejoin v0.4.1 // indirect
 	github.com/emirpasic/gods v1.18.1 // indirect
+	github.com/fsnotify/fsnotify v1.7.0 // indirect
 	github.com/getsentry/sentry-go v0.28.1 // indirect
 	github.com/go-git/gcfg v1.5.1-0.20230307220236-3a3c6141e376 // indirect
 	github.com/go-git/go-billy/v5 v5.6.2 // indirect
@@ -60,7 +62,6 @@ require (
 	github.com/mitchellh/go-homedir v1.1.0 // indirect
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
 	github.com/modern-go/reflect2 v1.0.2 // indirect
-	github.com/patrickmn/go-cache v2.1.0+incompatible // indirect
 	github.com/pjbgf/sha1cd v0.3.2 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/rogpeppe/go-internal v1.14.1 // indirect

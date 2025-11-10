@@ -11,6 +11,7 @@ import (
 	"github.com/bmeg/golib"
 	"github.com/bmeg/grip/gripql"
 	"github.com/bytedance/sonic"
+	"github.com/calypr/gecko/gecko/config"
 	"github.com/cockroachdb/errors"
 
 	"github.com/calypr/forge/metadata"
@@ -21,16 +22,19 @@ import (
 
 // Holds the value of the --out-dir flag
 var outputDir string
+var ValidateParentCmd = &cobra.Command{
+	Use:   "validate",
+	Short: "Contains subcommands for validating config, data, and edges",
+}
 
 func init() {
-	// Add the --out-dir flag to the check-edge command
-	CheckEdgeCmd.Flags().StringVarP(&outputDir, "out-dir", "o", "", "Directory to save vertices and edges files")
+	ValidateEdgeCmd.Flags().StringVarP(&outputDir, "out-dir", "o", "", "Directory to save vertices and edges files")
 }
 
 // ValidateCmd remains unchanged
-var ValidateCmd = &cobra.Command{
-	Use:   "validate <path_to_metadata_file(s)>",
-	Short: "validate data files given a jsonschema and a ndjson data target file or directory",
+var ValidateDataCmd = &cobra.Command{
+	Use:   "data <path_to_metadata_file(s)>",
+	Short: "data data files given a jsonschema and a ndjson data target file or directory",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		path := args[0]
@@ -104,8 +108,8 @@ var ValidateCmd = &cobra.Command{
 	},
 }
 
-var CheckEdgeCmd = &cobra.Command{
-	Use:   "check-edge <path_to_metadata_files>",
+var ValidateEdgeCmd = &cobra.Command{
+	Use:   "edge <path_to_metadata_files>",
 	Short: "Check for orphaned edges in graph data from FHIR .ndjson files",
 	Long:  "Generates graph elements from FHIR .ndjson files and checks for edges referencing non-existent vertices",
 	Args:  cobra.ExactArgs(1),
@@ -344,5 +348,38 @@ var CheckEdgeCmd = &cobra.Command{
 		fmt.Printf("--------------------------\n")
 
 		return allErrors.ErrorOrNil()
+	},
+}
+
+var ValidateConfigCmd = &cobra.Command{
+	Use:   "config <path_to_config_file>",
+	Short: "config explorer config file",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		path := args[0]
+
+		info, err := os.Stat(path)
+		if err != nil {
+			return errors.Wrapf(err, "could not get file info for %s", path)
+		}
+		if info.IsDir() {
+			return fmt.Errorf("%s is a directory, expected a file", path)
+		}
+		bytes, err := os.ReadFile(path)
+		if err != nil {
+			return errors.Wrapf(err, "could not read file for %s", path)
+		}
+		var explorerConf config.Config
+		err = json.Unmarshal(bytes, &explorerConf)
+		if err != nil {
+			return errors.Wrapf(err, "could not unmarshal file into explorerConfig for %s", path)
+		}
+
+		if explorerConf.ExplorerConfig != nil && len(explorerConf.ExplorerConfig) == 0 {
+			return fmt.Errorf("No explorer tabs are defined for explorer config: %s", path)
+		}
+
+		fmt.Printf("%s is a valid explorer config\n", path) // Added \n for cleaner output
+		return nil
 	},
 }
