@@ -36,42 +36,42 @@ func RunEmpty(projectId string) error {
 	return nil
 }
 
-func RunPublish(token string) error {
+func RunPublish(token string) (*sower.StatusResp, error) {
 	err := checkGHPAccessToken(token)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	repo, err := gitutil.OpenRepository(".")
 	if err != nil {
-		return err
+		return nil, err
 	}
 	remote, err := repo.Remote("origin")
 	if err != nil {
-		return fmt.Errorf("failed to get 'origin' remote: %w", err)
+		return nil, fmt.Errorf("failed to get 'origin' remote: %w", err)
 	}
 	urls := remote.Config().URLs
 	if len(urls) == 0 {
-		return fmt.Errorf("no URLs found for 'origin' remote")
+		return nil, fmt.Errorf("no URLs found for 'origin' remote")
 	}
 	if len(urls) > 1 {
-		return fmt.Errorf("not expecting more than 1 remote url. Got %d: %s", len(urls), urls)
+		return nil, fmt.Errorf("not expecting more than 1 remote url. Got %d: %s", len(urls), urls)
 	}
 	remoteURL := urls[0]
 	url, err := gitutil.TrimGitURLPrefix(remoteURL)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	username, err := gitutil.GetGlobalUserIdentity()
 	if err != nil {
-		return fmt.Errorf("Unable to read global git config to get username: %s", err)
+		return nil, fmt.Errorf("Unable to read global git config to get username: %s", err)
 	}
 	hash, err := gitutil.GetLastLocalCommit(repo)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	sc, err := sower.NewSowerClient()
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	dispatchArgs := &sower.DispatchArgs{
@@ -91,9 +91,9 @@ func RunPublish(token string) error {
 		dispatchArgs,
 	)
 	if err != nil || resp != nil {
-		return fmt.Errorf("failed to dispatch job: %v: %w", resp, err)
+		return nil, fmt.Errorf("failed to dispatch job: %v: %w", resp, err)
 	}
-	return nil
+	return resp, nil
 }
 
 func checkGHPAccessToken(token string) error {

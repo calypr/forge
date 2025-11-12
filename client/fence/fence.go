@@ -44,7 +44,7 @@ type FenceClient struct {
 }
 
 func (fc *FenceClient) UserPing() (*PingResp, error) {
-	reqResp := fc.MakeReq(http.MethodGet, commonUtils.FenceUserEndpoint, nil)
+	reqResp := fc.MakeReq(http.MethodGet, commonUtils.FenceUserEndpoint, nil, nil)
 	if reqResp.Body == nil || reqResp.Err != nil {
 		return nil, reqResp.Err
 	}
@@ -54,7 +54,7 @@ func (fc *FenceClient) UserPing() (*PingResp, error) {
 		return nil, err
 	}
 
-	bucketResp := fc.MakeReq(http.MethodGet, FenceBucketEndpoint, nil)
+	bucketResp := fc.MakeReq(http.MethodGet, FenceBucketEndpoint, nil, nil)
 	if reqResp.Body == nil || reqResp.Err != nil {
 		return nil, bucketResp.Err
 	}

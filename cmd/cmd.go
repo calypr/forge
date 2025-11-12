@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"github.com/calypr/forge/cmd/config"
 	"github.com/calypr/forge/cmd/empty"
 	"github.com/calypr/forge/cmd/initialize"
 	"github.com/calypr/forge/cmd/meta"
@@ -23,6 +24,10 @@ func init() {
 	RootCmd.AddCommand(meta.MetaCmd)
 	RootCmd.AddCommand(publish.PublishCmd)
 	RootCmd.AddCommand(empty.EmptyCmd)
+	RootCmd.AddCommand(config.ConfigCmd)
+	RootCmd.AddCommand(publish.ListCmd)
+	RootCmd.AddCommand(publish.StatusCmd)
+	RootCmd.AddCommand(publish.OutputCmd)
 
 	validate.ValidateParentCmd.AddCommand(validate.ValidateConfigCmd)
 	validate.ValidateParentCmd.AddCommand(validate.ValidateDataCmd)

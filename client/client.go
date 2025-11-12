@@ -57,7 +57,6 @@ func NewGen3Client() (*Gen3Client, error) {
 	if bucketName == "" {
 		return nil, fmt.Errorf("No gen3 bucket specified. Please provide a gen3Bucket key in your .drsconfig")
 	}
-
 	return &Gen3Client{Base: baseUrl, Cred: cred, ProjectId: projectId, BucketName: bucketName}, err
 }
 
@@ -66,7 +65,7 @@ type Resp struct {
 	Err  error
 }
 
-func (cl *Gen3Client) MakeReq(method string, path string, body []byte) *Resp {
+func (cl *Gen3Client) MakeReq(method string, path string, body []byte, params map[string]string) *Resp {
 	a := *cl.Base
 	a.Path = filepath.Join(a.Path, path)
 
@@ -79,6 +78,13 @@ func (cl *Gen3Client) MakeReq(method string, path string, body []byte) *Resp {
 	if err != nil {
 		return &Resp{nil, err}
 	}
+
+	q := req.URL.Query()
+	for key, val := range params {
+		q.Add(key, val)
+	}
+	req.URL.RawQuery = q.Encode()
+
 	expiration, err := token.GetExpiration(cl.Cred.AccessToken)
 	if err != nil {
 		return &Resp{nil, err}
