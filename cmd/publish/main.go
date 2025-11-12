@@ -24,9 +24,9 @@ var PublishCmd = &cobra.Command{
 }
 
 var ListCmd = &cobra.Command{
-	Use:   "list <github_personal_access_token>",
-	Short: "create metadata upload job for FHIR ndjson files",
-	Long:  `The 'publish' command is how metadata is handled in calypr.`,
+	Use:   "list",
+	Short: "view all of the jobs currently catalogued in sower",
+	Long:  `The 'list' command is how jobs are displayed to the user`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		sc, err := sower.NewSowerClient()
 		if err != nil {
@@ -45,10 +45,11 @@ var ListCmd = &cobra.Command{
 }
 
 var StatusCmd = &cobra.Command{
-	Use:   "status <github_personal_access_token>",
-	Short: "create metadata upload job for FHIR ndjson files",
-	Long:  `The 'publish' command is how metadata is handled in calypr.`,
-	Args:  cobra.ExactArgs(1),
+	Use:   "status <UID>",
+	Short: "view the status of a specific job on sower",
+	Long: `The 'status' command is how sower job status is communicated to the user.
+	A specific job's UID can be found from running the list command`,
+	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		sc, err := sower.NewSowerClient()
 		if err != nil {
@@ -64,10 +65,11 @@ var StatusCmd = &cobra.Command{
 }
 
 var OutputCmd = &cobra.Command{
-	Use:   "output <github_personal_access_token>",
-	Short: "create metadata upload job for FHIR ndjson files",
-	Long:  `The 'publish' command is how metadata is handled in calypr.`,
-	Args:  cobra.ExactArgs(1),
+	Use:   "output <UID>",
+	Short: "view output logs of a specific job on sower",
+	Long: `The 'output' command is how sower job output logs are communicated to the user.
+	A specific job's UID can be found from running the list command`,
+	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		sc, err := sower.NewSowerClient()
 		if err != nil {

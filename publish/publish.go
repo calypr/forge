@@ -15,10 +15,10 @@ const SOURCE_GH_USER_ENDPOINT = "https://source.ohsu.edu/api/v3/user"
 const POD_PUT_METHOD = "put"
 const POD_DELETE_METHOD = "delete"
 
-func RunEmpty(projectId string) error {
+func RunEmpty(projectId string) (*sower.StatusResp, error) {
 	sc, err := sower.NewSowerClient()
 	if err != nil {
-		return err
+		return nil, err
 	}
 	dispatchArgs := &sower.DispatchArgs{
 		ProjectId:   sc.ProjectId,
@@ -30,10 +30,11 @@ func RunEmpty(projectId string) error {
 		FHIR_JOB_NAME,
 		dispatchArgs,
 	)
-	if err != nil || resp != nil {
-		return fmt.Errorf("failed to dispatch job: %v: %w", resp, err)
+	if err != nil {
+		return nil, fmt.Errorf("failed to dispatch empty job. resp: %v err: %s", resp, err)
 	}
-	return nil
+
+	return resp, nil
 }
 
 func RunPublish(token string) (*sower.StatusResp, error) {
@@ -90,8 +91,8 @@ func RunPublish(token string) (*sower.StatusResp, error) {
 		FHIR_JOB_NAME,
 		dispatchArgs,
 	)
-	if err != nil || resp != nil {
-		return nil, fmt.Errorf("failed to dispatch job: %v: %w", resp, err)
+	if err != nil {
+		return nil, fmt.Errorf("failed to dispatch job. resp: %v err: %s", resp, err)
 	}
 	return resp, nil
 }
