@@ -7,10 +7,13 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"time"
 
-	idxClient "github.com/calypr/git-drs/client"
+	indexd_client "github.com/calypr/git-drs/client/indexd"
+	"github.com/calypr/git-drs/config"
+	"github.com/calypr/git-drs/drs"
 	fver "github.com/google/fhir/go/fhirversion"
 	"github.com/google/fhir/go/jsonformat"
 	code "github.com/google/fhir/go/proto/google/fhir/proto/r5/core/codes_go_proto"
@@ -52,14 +55,20 @@ type MetaStructure struct {
 	Path     string   `json:"path"`
 }
 
-func RunMetaInit(outPath string) error {
+func RunMetaInit(outPath string, remote config.Remote) error {
 	var rsID string
-	cfg, err := idxClient.NewIndexDClient(&idxClient.NoOpLogger{})
+	var err error
+	cfg, err := config.LoadConfig()
 	if err != nil {
 		return err
 	}
 
-	idxCl, ok := cfg.(*idxClient.IndexDClient)
+	val, err := cfg.GetCurrentRemoteClient(nil)
+	if err != nil {
+		return err
+	}
+
+	idxCl, ok := val.(*indexd_client.IndexDClient)
 	if !ok {
 		return fmt.Errorf("Config is not IndexDClient")
 	}
@@ -88,8 +97,21 @@ func RunMetaInit(outPath string) error {
 		return fmt.Errorf("error listing indexd records: %v", err)
 	}
 
+	collectRecs := []*drs.DRSObject{}
+	for rec := range recs {
+		if rec.Error != nil {
+			return fmt.Errorf("error from record channel: %v", rec.Error)
+		}
+		collectRecs = append(collectRecs, rec.Object)
+	}
+
+	LFSRecords, err := findLFSRecords()
+	if err != nil {
+		return err
+	}
+
 	// Now that we have a channel, we can pass it directly to the merging function
-	if err := processDRSRecordsAndUpdateFHIR(recs, outPath, idxCl.Base.Host, idxCl.ProjectId, rsID); err != nil {
+	if err := processDRSRecordsAndUpdateFHIR(collectRecs, LFSRecords, outPath, idxCl.Base.Host, idxCl.ProjectId, rsID); err != nil {
 		return fmt.Errorf("failed to process DRS records: %v", err)
 	}
 
@@ -246,8 +268,38 @@ func getResearchStudy(fhirDirectory string, projectId string, endpoint string, m
 	return id, nil
 }
 
+type LSFIles struct {
+	Files []LFSRecord `json:"files"`
+}
+
+type LFSRecord struct {
+	Name       string `json:"name"`
+	Size       int64  `json:"size"`
+	Checkout   bool   `json:"checkout"`
+	Downloaded bool   `json:"downloaded"`
+	OIDType    string `json:"oid_type"`
+	OID        string `json:"oid"`
+	Version    string `json:"version"`
+}
+
+// findLFSRecords runs ls-files and collects the results into struct
+func findLFSRecords() ([]LFSRecord, error) {
+	output, err := exec.Command("git-lfs", "ls-files", "--json").Output()
+	if err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			return nil, fmt.Errorf("command execution failed: %w\nstderr: %s", err, exitErr.Stderr)
+		}
+		return nil, fmt.Errorf("failed to run git-lfs command: %w", err)
+	}
+	var records LSFIles
+	if err := json.Unmarshal(output, &records); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal JSON output: %w", err)
+	}
+	return records.Files, nil
+}
+
 // processDRSRecordsAndUpdateFHIR processes DRS records and updates FHIR NDJSON files with UPSERT operation.
-func processDRSRecordsAndUpdateFHIR(drsRecordsChan chan idxClient.ListRecordsResult, fhirDirectory string, endpoint string, project string, researchStudyID string) error {
+func processDRSRecordsAndUpdateFHIR(drsRecords []*drs.DRSObject, LfsRecords []LFSRecord, fhirDirectory string, endpoint string, project string, researchStudyID string) error {
 	docRefFP := filepath.Join(fhirDirectory, DOCUMENT_RESOURCE+NDJSON_EXT)
 	dirRefFP := filepath.Join(fhirDirectory, DIRECTORY_RESOURCE+NDJSON_EXT) // New Directory file path
 	existingFHIRRecords := make(map[string]*cprb.ContainedResource)
@@ -296,12 +348,28 @@ func processDRSRecordsAndUpdateFHIR(drsRecordsChan chan idxClient.ListRecordsRes
 	}
 
 	count := 0
-	for drsRecord := range drsRecordsChan {
-		count++
-		if drsRecord.Error != nil {
-			return fmt.Errorf("error from record channel: %v", drsRecord.Error)
+	for _, rec := range LfsRecords {
+		foundMatch := false
+		containedResource := &cprb.ContainedResource{}
+		for _, drsRecord := range drsRecords {
+			found := false
+			for _, sum := range drsRecord.Checksums {
+				if rec.OID == sum.Checksum {
+					drsRecord.Name = rec.Name
+					foundMatch = true
+					containedResource = templateDocRef(drsRecord, endpoint, project, researchStudyID)
+					found = true
+				}
+			}
+			if found == true {
+				break
+			}
 		}
-		containedResource := templateDocRef(drsRecord, endpoint, project, researchStudyID)
+		if !foundMatch {
+			continue
+		}
+
+		count++
 		fhirRecord := containedResource.GetDocumentReference()
 		recordID := fhirRecord.GetId().GetValue()
 

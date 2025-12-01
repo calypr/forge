@@ -7,6 +7,7 @@ import (
 
 	"github.com/calypr/forge/client/sower"
 	"github.com/calypr/forge/utils/gitutil"
+	"github.com/calypr/git-drs/config"
 )
 
 // This job name must match the sower config otherwise job won't start
@@ -15,8 +16,8 @@ const SOURCE_GH_USER_ENDPOINT = "https://source.ohsu.edu/api/v3/user"
 const POD_PUT_METHOD = "put"
 const POD_DELETE_METHOD = "delete"
 
-func RunEmpty(projectId string) (*sower.StatusResp, error) {
-	sc, err := sower.NewSowerClient()
+func RunEmpty(projectId string, remote config.Remote) (*sower.StatusResp, error) {
+	sc, err := sower.NewSowerClient(remote)
 	if err != nil {
 		return nil, err
 	}
@@ -37,7 +38,7 @@ func RunEmpty(projectId string) (*sower.StatusResp, error) {
 	return resp, nil
 }
 
-func RunPublish(token string) (*sower.StatusResp, error) {
+func RunPublish(token string, profile config.Remote) (*sower.StatusResp, error) {
 	err := checkGHPAccessToken(token)
 	if err != nil {
 		return nil, err
@@ -46,7 +47,7 @@ func RunPublish(token string) (*sower.StatusResp, error) {
 	if err != nil {
 		return nil, err
 	}
-	remote, err := repo.Remote("origin")
+	remote, err := repo.Remote(string(profile))
 	if err != nil {
 		return nil, fmt.Errorf("failed to get 'origin' remote: %w", err)
 	}
@@ -70,7 +71,7 @@ func RunPublish(token string) (*sower.StatusResp, error) {
 	if err != nil {
 		return nil, err
 	}
-	sc, err := sower.NewSowerClient()
+	sc, err := sower.NewSowerClient(profile)
 	if err != nil {
 		return nil, err
 	}

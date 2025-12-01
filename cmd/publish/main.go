@@ -5,16 +5,25 @@ import (
 
 	"github.com/calypr/forge/client/sower"
 	"github.com/calypr/forge/publish"
+	"github.com/calypr/git-drs/config"
 	"github.com/spf13/cobra"
 )
 
 var PublishCmd = &cobra.Command{
-	Use:   "publish <github_personal_access_token>",
+	Use:   "publish <github_personal_access_token> [remote]",
 	Short: "create metadata upload job for FHIR ndjson files",
 	Long:  `The 'publish' command is how metadata is handled in calypr.`,
-	Args:  cobra.ExactArgs(1),
+	Args:  cobra.RangeArgs(1, 2),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		resp, err := publish.RunPublish(args[0])
+		var remote config.Remote
+		if len(args) == 2 {
+			remote = config.Remote(args[1])
+			fmt.Printf("Using remote: %s\n", remote)
+		} else {
+			remote = config.Remote("")
+			fmt.Printf("Using default remote: %s\n", remote)
+		}
+		resp, err := publish.RunPublish(args[0], remote)
 		if err != nil {
 			return err
 		}
@@ -24,11 +33,11 @@ var PublishCmd = &cobra.Command{
 }
 
 var ListCmd = &cobra.Command{
-	Use:   "list",
+	Use:   "list [remote]",
 	Short: "view all of the jobs currently catalogued in sower",
 	Long:  `The 'list' command is how jobs are displayed to the user`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		sc, err := sower.NewSowerClient()
+		sc, err := sower.NewSowerClient(config.Remote(args[0]))
 		if err != nil {
 			return err
 		}
@@ -45,13 +54,21 @@ var ListCmd = &cobra.Command{
 }
 
 var StatusCmd = &cobra.Command{
-	Use:   "status <UID>",
+	Use:   "status <UID> [remote]",
 	Short: "view the status of a specific job on sower",
 	Long: `The 'status' command is how sower job status is communicated to the user.
 	A specific job's UID can be found from running the list command`,
-	Args: cobra.ExactArgs(1),
+	Args: cobra.RangeArgs(1, 2),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		sc, err := sower.NewSowerClient()
+		var remote config.Remote
+		if len(args) == 2 {
+			remote = config.Remote(args[1])
+			fmt.Printf("Using remote: %s\n", remote)
+		} else {
+			remote = config.Remote("")
+			fmt.Printf("Using default remote: %s\n", remote)
+		}
+		sc, err := sower.NewSowerClient(remote)
 		if err != nil {
 			return err
 		}
@@ -65,13 +82,21 @@ var StatusCmd = &cobra.Command{
 }
 
 var OutputCmd = &cobra.Command{
-	Use:   "output <UID>",
+	Use:   "output <UID> [remote]",
 	Short: "view output logs of a specific job on sower",
 	Long: `The 'output' command is how sower job output logs are communicated to the user.
 	A specific job's UID can be found from running the list command`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		sc, err := sower.NewSowerClient()
+		var remote config.Remote
+		if len(args) == 2 {
+			remote = config.Remote(args[1])
+			fmt.Printf("Using remote: %s\n", remote)
+		} else {
+			remote = config.Remote("")
+			fmt.Printf("Using default remote: %s\n", remote)
+		}
+		sc, err := sower.NewSowerClient(remote)
 		if err != nil {
 			return err
 		}

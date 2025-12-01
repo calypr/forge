@@ -4,12 +4,12 @@ import (
 	"fmt"
 	"strings"
 
-	idxClient "github.com/calypr/git-drs/client"
-	"github.com/google/uuid"
+	"github.com/calypr/git-drs/drs"
 	code "github.com/google/fhir/go/proto/google/fhir/proto/r5/core/codes_go_proto"
 	dtpb "github.com/google/fhir/go/proto/google/fhir/proto/r5/core/datatypes_go_proto"
 	cprb "github.com/google/fhir/go/proto/google/fhir/proto/r5/core/resources/bundle_and_contained_resource_go_proto"
 	drpb "github.com/google/fhir/go/proto/google/fhir/proto/r5/core/resources/document_reference_go_proto"
+	"github.com/google/uuid"
 )
 
 const (
@@ -44,53 +44,54 @@ func CreateResourceReference(resourceId string) *dtpb.Reference {
 	}
 }
 
-func templateDocRef(metaStruc idxClient.ListRecordsResult, endpoint string, project string, rSID string) *cprb.ContainedResource {
-	obj := metaStruc.Record
-
+func templateDocRef(obj *drs.DRSObject, endpoint string, project string, rSID string) *cprb.ContainedResource {
 	// Create the extensions for hashes
 	var extensions []*dtpb.Extension
-	if obj.Hashes.MD5 != "" {
-		extensions = append(extensions, &dtpb.Extension{
-			Url: &dtpb.Uri{Value: endpoint + FHIR_STRUCTURE_DEFINITION + "/checksum-md5"},
-			Value: &dtpb.Extension_ValueX{
-				Choice: &dtpb.Extension_ValueX_StringValue{StringValue: &dtpb.String{Value: obj.Hashes.MD5}},
-			},
-		})
-	}
-	if obj.Hashes.SHA256 != "" {
-		extensions = append(extensions, &dtpb.Extension{
-			Url: &dtpb.Uri{Value: "http://" + endpoint + FHIR_STRUCTURE_DEFINITION + "/checksum-sha256"},
-			Value: &dtpb.Extension_ValueX{
-				Choice: &dtpb.Extension_ValueX_StringValue{StringValue: &dtpb.String{Value: obj.Hashes.SHA256}},
-			},
-		})
+	for _, sum := range obj.Checksums {
+		if sum.Type == drs.ChecksumTypeMD5 {
+			extensions = append(extensions, &dtpb.Extension{
+				Url: &dtpb.Uri{Value: endpoint + FHIR_STRUCTURE_DEFINITION + "/checksum-md5"},
+				Value: &dtpb.Extension_ValueX{
+					Choice: &dtpb.Extension_ValueX_StringValue{StringValue: &dtpb.String{Value: sum.Checksum}},
+				},
+			})
+		}
+		if sum.Type == drs.ChecksumTypeSHA256 {
+			extensions = append(extensions, &dtpb.Extension{
+				Url: &dtpb.Uri{Value: "http://" + endpoint + FHIR_STRUCTURE_DEFINITION + "/checksum-sha256"},
+				Value: &dtpb.Extension_ValueX{
+					Choice: &dtpb.Extension_ValueX_StringValue{StringValue: &dtpb.String{Value: sum.Checksum}},
+				},
+			})
+		}
 	}
 
 	// Determine the URL for the attachment
 	var url *dtpb.Url
-	if len(obj.URLs) > 0 {
-		url = &dtpb.Url{Value: obj.URLs[0]}
+	if len(obj.AccessMethods) > 0 {
+		// TODO: Big assumption here assuming that there exists only one url per FHIR attachment
+		url = &dtpb.Url{Value: obj.AccessMethods[0].AccessURL.URL}
 	}
 
 	// Create the DocumentReference
 	dr := &drpb.DocumentReference{
-		Id:        &dtpb.Id{Value: obj.Did},
+		Id:        &dtpb.Id{Value: obj.Id},
 		Status:    &drpb.DocumentReference_StatusCode{Value: code.DocumentReferenceStatusCode_CURRENT},
 		DocStatus: &drpb.DocumentReference_DocStatusCode{Value: code.CompositionStatusCode_FINAL},
-		Date:      parseFHIRInstantString(obj.CreatedDate),
+		Date:      parseFHIRInstantString(obj.CreatedTime),
 		Identifier: []*dtpb.Identifier{
 			{
 				Use:    &dtpb.Identifier_UseCode{Value: code.IdentifierUseCode_OFFICIAL},
 				System: &dtpb.Uri{Value: "http://" + endpoint + "/" + project},
-				Value:  &dtpb.String{Value: obj.Did},
+				Value:  &dtpb.String{Value: obj.Id},
 			},
 		},
 		Content: []*drpb.DocumentReference_Content{
 			{
 				Attachment: &dtpb.Attachment{
-					Creation:  parseFHIRDateTimeString(obj.CreatedDate),
+					Creation:  parseFHIRDateTimeString(obj.CreatedTime),
 					Size:      &dtpb.Integer64{Value: obj.Size},
-					Title:     &dtpb.String{Value: obj.FileName},
+					Title:     &dtpb.String{Value: obj.Name},
 					Extension: extensions,
 					Url:       url,
 				},

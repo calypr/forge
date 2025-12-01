@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/calypr/forge/client"
+	"github.com/calypr/git-drs/config"
 )
 
 const sowerDispatch = "/job/dispatch"
@@ -23,8 +24,8 @@ func DispatchJob(s Sower, name string, args *DispatchArgs) (*StatusResp, error) 
 	return s.DispatchJob(name, args)
 }
 
-func NewSowerClient() (*SowerClient, error) {
-	gen3Client, err := client.NewGen3Client()
+func NewSowerClient(remote config.Remote) (*SowerClient, error) {
+	gen3Client, err := client.NewGen3Client(remote)
 	if err != nil {
 		return nil, err
 	}
@@ -45,7 +46,7 @@ type DispatchArgs struct {
 	ProjectId      string `json:"projectId"`
 	Profile        string `json:"profile"`
 	BucketName     string `json:"bucketName"`
-	APIEndpoint    string `json:"APIEndpoint`
+	APIEndpoint    string `json:"APIEndpoint"`
 	GHCommitHash   string `json:"ghCommitHash"`
 	GHPAccessToken string `json:"ghToken"`
 	GHUserName     string `json:"ghUserName"`

@@ -6,6 +6,7 @@ import (
 
 	"github.com/calypr/data-client/client/commonUtils"
 	"github.com/calypr/forge/client"
+	"github.com/calypr/git-drs/config"
 )
 
 // FenceBucketEndpoint is is the endpoint postfix for FENCE bucket list
@@ -31,8 +32,8 @@ func UserPing(f Fence) (*PingResp, error) {
 	return f.UserPing()
 }
 
-func NewFenceClient() (*FenceClient, error) {
-	gen3Client, err := client.NewGen3Client()
+func NewFenceClient(remote config.Remote) (*FenceClient, error) {
+	gen3Client, err := client.NewGen3Client(remote)
 	if err != nil {
 		return nil, err
 	}

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	token "github.com/bmeg/grip-graphql/middleware"
+	"github.com/calypr/git-drs/config"
 	drsConfig "github.com/calypr/git-drs/config"
 
 	"github.com/calypr/data-client/client/commonUtils"
@@ -24,36 +25,34 @@ type Gen3Client struct {
 }
 
 // load repo-level config and return a new IndexDClient
-func NewGen3Client() (*Gen3Client, error) {
+func NewGen3Client(remote config.Remote) (*Gen3Client, error) {
 	var conf jwt.Configure
 
 	cfg, err := drsConfig.LoadConfig()
 	if err != nil {
 		return nil, err
 	}
-
-	profile := cfg.Servers.Gen3.Auth.Profile
-	if profile == "" {
-		return nil, fmt.Errorf("No gen3 profile specified. Please provide a gen3Profile key in your .drsconfig")
+	gfc, ok := cfg.Remotes[remote]
+	if !ok {
+		return nil, fmt.Errorf("remote %s not found in config: %v", remote, cfg.Remotes)
 	}
 
-	cred, err := conf.ParseConfig(profile)
+	cred, err := conf.ParseConfig(string(remote))
 	if err != nil {
 		return nil, err
 	}
 
 	baseUrl, err := url.Parse(cred.APIEndpoint)
 	if err != nil {
-		return nil, fmt.Errorf("error parsing base URL from profile %s: %v", profile, err)
+		return nil, fmt.Errorf("error parsing base URL from profile %s: %v", remote, err)
 	}
 
 	// get the gen3Project and gen3Bucket from the config
-	projectId := cfg.Servers.Gen3.Auth.ProjectID
+	projectId := gfc.Gen3.ProjectID
 	if projectId == "" {
 		return nil, fmt.Errorf("No gen3 project specified. Please provide a gen3Project key in your .drsconfig")
 	}
-
-	bucketName := cfg.Servers.Gen3.Auth.Bucket
+	bucketName := gfc.Gen3.Bucket
 	if bucketName == "" {
 		return nil, fmt.Errorf("No gen3 bucket specified. Please provide a gen3Bucket key in your .drsconfig")
 	}

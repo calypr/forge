@@ -9,21 +9,14 @@ import (
 	"github.com/bmeg/jsonschemagraph/compile"
 	"github.com/bmeg/jsonschemagraph/graph"
 	"github.com/bytedance/sonic"
-	"github.com/calypr/forge/client"
 	"github.com/hashicorp/go-multierror"
 )
 
 type Schema struct {
 	Sch *graph.GraphSchema
-	Cli *client.Gen3Client
 }
 
 func NewSchema() (*Schema, error) {
-	cli, err := client.NewGen3Client()
-	if err != nil {
-		fmt.Println("THE ERR IS HERE1: ", err)
-		return nil, err
-	}
 	compiler := jsonschema.NewCompiler()
 	compiler.AssertVocabs()
 	vc, err := compile.GetHyperMediaVocab()
@@ -65,7 +58,6 @@ func NewSchema() (*Schema, error) {
 	}
 	return &Schema{
 		Sch: out,
-		Cli: cli,
 	}, nil
 }
 

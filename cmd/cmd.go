@@ -3,7 +3,6 @@ package cmd
 import (
 	"github.com/calypr/forge/cmd/config"
 	"github.com/calypr/forge/cmd/empty"
-	"github.com/calypr/forge/cmd/initialize"
 	"github.com/calypr/forge/cmd/meta"
 	"github.com/calypr/forge/cmd/ping"
 	"github.com/calypr/forge/cmd/publish"
@@ -19,7 +18,7 @@ development and project management tasks.`,
 }
 
 func init() {
-	RootCmd.AddCommand(initialize.InitCmd)
+	// RootCmd.AddCommand(initialize.InitCmd) comment this out for now
 	RootCmd.AddCommand(ping.PingCmd)
 	RootCmd.AddCommand(meta.MetaCmd)
 	RootCmd.AddCommand(publish.PublishCmd)
