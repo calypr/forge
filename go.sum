@@ -75,6 +75,12 @@ github.com/calypr/gecko v0.0.0-20251110184938-909cb1b668e2 h1:ii28j/rzbOaxpUVnON
 github.com/calypr/gecko v0.0.0-20251110184938-909cb1b668e2/go.mod h1:SJfHDSOaN5xevCor2PVRZxHHJ/WwfAnBBddgnQcUwJo=
 github.com/calypr/git-drs v0.0.0-20251201212931-377c483d9fc0 h1:N/UtHeCY9neficWtSsNBu0NMaaSx62CwAsfShadEEtM=
 github.com/calypr/git-drs v0.0.0-20251201212931-377c483d9fc0/go.mod h1:yosz5xq1jz5+qDoQiUtooz6+RYH8SNQu0WkPs8QQd2I=
+github.com/calypr/git-drs v0.0.0-20251202195314-ff143b46d69b h1:oIpg0qd+DQxBY56Pdphxxn2S+abr4UIW9HHsLIcqbeE=
+github.com/calypr/git-drs v0.0.0-20251202195314-ff143b46d69b/go.mod h1:yosz5xq1jz5+qDoQiUtooz6+RYH8SNQu0WkPs8QQd2I=
+github.com/calypr/git-drs v0.0.0-20251203183852-4efaabddd09f h1:mViDzHVYpjJc1v9P8E97wMwiCkAJtgFP2X07VLgK2qo=
+github.com/calypr/git-drs v0.0.0-20251203183852-4efaabddd09f/go.mod h1:fnhdZZnFjI89vxWA9IzFjwTXWCHEMm0m75wCYUSOjB8=
+github.com/calypr/git-drs v0.0.0-20251204172911-d6f800cc6947 h1:/sZ24FW+H53ed1BYmdZpQO/auAgjALCLMsY0N7MFrRw=
+github.com/calypr/git-drs v0.0.0-20251204172911-d6f800cc6947/go.mod h1:fnhdZZnFjI89vxWA9IzFjwTXWCHEMm0m75wCYUSOjB8=
 github.com/census-instrumentation/opencensus-proto v0.2.1/go.mod h1:f6KPmirojxKA12rnyqOA5BBL4O983OfeGPqjHWSTneU=
 github.com/client9/misspell v0.3.4/go.mod h1:qj6jICC3Q7zFZvVWo7KLAzC3yx5G7kyvSDkc90ppPyw=
 github.com/clipperhouse/uax29/v2 v2.2.0 h1:ChwIKnQN3kcZteTXMgb1wztSgaU+ZemkgWdohwgs8tY=

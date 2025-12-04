@@ -18,7 +18,6 @@ development and project management tasks.`,
 }
 
 func init() {
-	// RootCmd.AddCommand(initialize.InitCmd) comment this out for now
 	RootCmd.AddCommand(ping.PingCmd)
 	RootCmd.AddCommand(meta.MetaCmd)
 	RootCmd.AddCommand(publish.PublishCmd)

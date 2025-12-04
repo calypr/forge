@@ -11,7 +11,7 @@ require (
 	github.com/bytedance/sonic v1.14.0
 	github.com/calypr/data-client v0.0.0-20251103160310-cc0ca9939fe7
 	github.com/calypr/gecko v0.0.0-20251110184938-909cb1b668e2
-	github.com/calypr/git-drs v0.0.0-20251201212931-377c483d9fc0
+	github.com/calypr/git-drs v0.0.0-20251204172911-d6f800cc6947
 	github.com/cockroachdb/errors v1.11.3
 	github.com/go-git/go-git/v5 v5.12.0
 	github.com/google/fhir/go v0.7.5-0.20250925033537-1f5b5b9427ff

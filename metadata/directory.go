@@ -66,7 +66,7 @@ func extractReferenceString(ref *dtpb.Reference) (string, error) {
 // EnsureDirectoryPathExists recursively checks and creates all parent directories
 // for a given POSIX path (e.g., "/a/b/c"). It returns the Directory
 // object for the target path.
-func EnsureDirectoryPathExists(posixPath string) *Directory {
+func EnsureDirectoryPathExists(endpoint string, posixPath string) *Directory {
 	// Clean and normalize the path to standard POSIX separators (/)
 	cleanPath := filepath.Clean(posixPath)
 	// Use the clean path as the unique key in our cache.
@@ -79,7 +79,7 @@ func EnsureDirectoryPathExists(posixPath string) *Directory {
 		return dir
 	}
 
-	dirUUID := uuid.NewSHA1(DirectoryNamespaceUUID, []byte(cleanPath)).String()
+	dirUUID := uuid.NewSHA1(uuid.NewSHA1(uuid.NameSpaceDNS, []byte(endpoint)), []byte(cleanPath)).String()
 	// Base case: Handle the root path "/"
 	if cleanPath == "/" {
 		DirectoryCache[cleanPath] = &Directory{
@@ -93,7 +93,7 @@ func EnsureDirectoryPathExists(posixPath string) *Directory {
 	// Determine the parent path and recursively ensure it exists
 	dirName := filepath.Base(cleanPath)
 	parentPath := filepath.Dir(cleanPath)
-	parentDir := EnsureDirectoryPathExists(parentPath)
+	parentDir := EnsureDirectoryPathExists(endpoint, parentPath)
 
 	// Create the current Directory object with its deterministic UUID
 	currentDir := &Directory{
@@ -130,7 +130,7 @@ func EnsureDirectoryPathExists(posixPath string) *Directory {
 
 // BuildDirectoryTreeFromDocRef extracts the path from a DocumentReference and builds the tree.
 // It ensures all necessary Directory nodes are created and linked in the global DirectoryCache.
-func BuildDirectoryTreeFromDocRef(docRef *drpb.DocumentReference) {
+func BuildDirectoryTreeFromDocRef(endpoint string, docRef *drpb.DocumentReference) {
 	if len(docRef.Content) == 0 || docRef.Content[0].GetAttachment().GetUrl().GetValue() == "" {
 		log.Println("DocumentReference missing URL attachment.")
 		return
@@ -147,7 +147,7 @@ func BuildDirectoryTreeFromDocRef(docRef *drpb.DocumentReference) {
 	dirPath := filepath.Dir(posixPath)
 
 	// Recursively create all directories up to the file's parent
-	parentDir := EnsureDirectoryPathExists(dirPath)
+	parentDir := EnsureDirectoryPathExists(endpoint, dirPath)
 
 	if parentDir != nil {
 		docRefID := docRef.GetId().GetValue()
@@ -166,6 +166,7 @@ func BuildDirectoryTreeFromDocRef(docRef *drpb.DocumentReference) {
 		}
 
 		if !isAlreadyLinked {
+			fmt.Println("HELLO WE HERE")
 			parentDir.Child = append(parentDir.Child, fileRef)
 		}
 	}

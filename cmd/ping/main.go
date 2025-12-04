@@ -18,7 +18,7 @@ var PingCmd = &cobra.Command{
 		if len(args) > 0 {
 			remote = config.Remote(args[0])
 		} else {
-			remote = config.Remote("")
+			remote = config.Remote("origin")
 		}
 
 		FenceClient, err := fence.NewFenceClient(remote)

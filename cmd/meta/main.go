@@ -7,7 +7,6 @@ import (
 )
 
 var outPath string
-
 var MetaCmd = &cobra.Command{
 	Use:     "meta",
 	Short:   "Autogenerate metadata based off of files that have been uploaded",
@@ -15,7 +14,12 @@ var MetaCmd = &cobra.Command{
 	Example: "forge meta [remote]",
 	Args:    cobra.RangeArgs(0, 1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		err := metadata.RunMetaInit(outPath, config.Remote(args[0]))
+		var remoteName string = "origin"
+		if len(args) > 0 {
+			remoteName = args[0]
+		}
+
+		err := metadata.RunMetaInit(outPath, config.Remote(remoteName))
 		if err != nil {
 			return err
 		}

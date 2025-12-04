@@ -14,6 +14,7 @@ import (
 	indexd_client "github.com/calypr/git-drs/client/indexd"
 	"github.com/calypr/git-drs/config"
 	"github.com/calypr/git-drs/drs"
+	"github.com/calypr/git-drs/drslog"
 	fver "github.com/google/fhir/go/fhirversion"
 	"github.com/google/fhir/go/jsonformat"
 	code "github.com/google/fhir/go/proto/google/fhir/proto/r5/core/codes_go_proto"
@@ -63,7 +64,12 @@ func RunMetaInit(outPath string, remote config.Remote) error {
 		return err
 	}
 
-	val, err := cfg.GetCurrentRemoteClient(nil)
+	logger, err := drslog.NewLogger("", true)
+	if err != nil {
+		return err
+	}
+
+	val, err := cfg.GetRemoteClient(remote, logger)
 	if err != nil {
 		return err
 	}
@@ -119,12 +125,12 @@ func RunMetaInit(outPath string, remote config.Remote) error {
 }
 
 // getOrCreateRootDirectory ensures the root directory ("/") exists in DirectoryCache
-func getOrCreateRootDirectory() *Directory {
+func getOrCreateRootDirectory(endpoint string) *Directory {
 	cleanPath := "/"
 	if dir, ok := DirectoryCache[cleanPath]; ok {
 		return dir
 	}
-	dirUUID := uuid.NewSHA1(DirectoryNamespaceUUID, []byte(cleanPath)).String()
+	dirUUID := uuid.NewSHA1(uuid.NewSHA1(uuid.NameSpaceDNS, []byte(endpoint)), []byte(cleanPath)).String()
 	newDir := &Directory{
 		Name:         "/",
 		Id:           dirUUID,
@@ -183,7 +189,7 @@ func getResearchStudy(fhirDirectory string, projectId string, endpoint string, m
 			if err2 := json.Unmarshal(unmarshalBytes, &tmp); err2 == nil {
 				if idv, ok := tmp["id"].(string); ok && idv != "" {
 					// we have an ID but couldn't unmarshal via fhir unmarshaller; still inject rootDir
-					rootDir := getOrCreateRootDirectory()
+					rootDir := getOrCreateRootDirectory(endpoint)
 					newBytes, injErr := injectRootDir(unmarshalBytes, "Directory/"+rootDir.Id)
 					if injErr != nil {
 						return "", injErr
@@ -201,7 +207,7 @@ func getResearchStudy(fhirDirectory string, projectId string, endpoint string, m
 		fmt.Printf("Loaded existing ResearchStudy from %s with ID %s\n", rsPath, rsID)
 
 		// inject or update rootDir in the existing JSON and write back
-		rootDir := getOrCreateRootDirectory()
+		rootDir := getOrCreateRootDirectory(endpoint)
 		newFirstLineBytes, err := injectRootDir(unmarshalBytes, "Directory/"+rootDir.Id)
 		if err != nil {
 			return "", fmt.Errorf("failed to inject rootDir into existing ResearchStudy: %v", err)
@@ -218,10 +224,10 @@ func getResearchStudy(fhirDirectory string, projectId string, endpoint string, m
 	}
 
 	// File does not exist: create a new ResearchStudy contained resource and inject rootDir
-	id := createIDFromStrings(endpoint, RESEARCH_STUDY, projectId, projectId)
+	id := createIDFromStrings(endpoint, RESEARCH_STUDY, projectId)
 
 	// Ensure root directory exists
-	rootDir := getOrCreateRootDirectory()
+	rootDir := getOrCreateRootDirectory(endpoint)
 
 	rs := &rspb.ResearchStudy{
 		Id: &dtpb.Id{Value: id},
@@ -352,16 +358,14 @@ func processDRSRecordsAndUpdateFHIR(drsRecords []*drs.DRSObject, LfsRecords []LF
 		foundMatch := false
 		containedResource := &cprb.ContainedResource{}
 		for _, drsRecord := range drsRecords {
-			found := false
 			for _, sum := range drsRecord.Checksums {
-				if rec.OID == sum.Checksum {
+				if sum.Type == drs.ChecksumTypeSHA256 && rec.OID == sum.Checksum {
 					drsRecord.Name = rec.Name
 					foundMatch = true
 					containedResource = templateDocRef(drsRecord, endpoint, project, researchStudyID)
-					found = true
 				}
 			}
-			if found == true {
+			if foundMatch == true {
 				break
 			}
 		}
@@ -373,9 +377,8 @@ func processDRSRecordsAndUpdateFHIR(drsRecords []*drs.DRSObject, LfsRecords []LF
 		fhirRecord := containedResource.GetDocumentReference()
 		recordID := fhirRecord.GetId().GetValue()
 
-		BuildDirectoryTreeFromDocRef(fhirRecord)
+		BuildDirectoryTreeFromDocRef(endpoint, fhirRecord)
 		if existing := existingFHIRRecords[recordID].GetDocumentReference(); existing != nil {
-			// ... (Existing DocumentReference update/merge logic) ...
 			existing.Status = fhirRecord.Status
 			existing.DocStatus = fhirRecord.DocStatus
 			existing.Date = fhirRecord.Date
@@ -396,6 +399,7 @@ func processDRSRecordsAndUpdateFHIR(drsRecords []*drs.DRSObject, LfsRecords []LF
 			existingFHIRRecords[recordID] = containedResource
 		}
 	}
+
 	log.Printf("Processed %d records", count)
 
 	docRefFile, err := os.Create(docRefFP)

@@ -21,8 +21,6 @@ const (
 	DIR_ID_PREFIX             = DIRECTORY_RESOURCE + "/"
 )
 
-var DirectoryNamespaceUUID = uuid.MustParse("e61f8f3c-8f2c-4b5c-8d19-9f7918f8f483")
-
 func CreateDocReferenceReference(resourceId string) *dtpb.Reference {
 	return &dtpb.Reference{
 		Reference: &dtpb.Reference_DocumentReferenceId{
@@ -45,6 +43,11 @@ func CreateResourceReference(resourceId string) *dtpb.Reference {
 }
 
 func templateDocRef(obj *drs.DRSObject, endpoint string, project string, rSID string) *cprb.ContainedResource {
+
+	id := uuid.NewSHA1(
+		uuid.NewSHA1(uuid.NameSpaceDNS, []byte(endpoint)),
+		fmt.Appendf(nil, "%s/%s", project, obj.Name)).String()
+
 	// Create the extensions for hashes
 	var extensions []*dtpb.Extension
 	for _, sum := range obj.Checksums {
@@ -75,7 +78,7 @@ func templateDocRef(obj *drs.DRSObject, endpoint string, project string, rSID st
 
 	// Create the DocumentReference
 	dr := &drpb.DocumentReference{
-		Id:        &dtpb.Id{Value: obj.Id},
+		Id:        &dtpb.Id{Value: id},
 		Status:    &drpb.DocumentReference_StatusCode{Value: code.DocumentReferenceStatusCode_CURRENT},
 		DocStatus: &drpb.DocumentReference_DocStatusCode{Value: code.CompositionStatusCode_FINAL},
 		Date:      parseFHIRInstantString(obj.CreatedTime),
@@ -113,16 +116,15 @@ func templateDocRef(obj *drs.DRSObject, endpoint string, project string, rSID st
 	}
 }
 
-func createIDFromStrings(apiEndpoint string, resourceType string, projectID string, identifierString string) string {
+func createIDFromStrings(apiEndpoint string, resourceType string, projectID string) string {
 	// Use uuid.Nil as the namespace and the apiEndpoint string to create a consistent namespace UUID.
 	// This is necessary because `uuid.NewSHA1` requires a UUID namespace, not a string.
-	endpointNamespace := uuid.NewSHA1(uuid.Nil, []byte(apiEndpoint))
+	endpointNamespace := uuid.NewSHA1(uuid.NameSpaceDNS, []byte(apiEndpoint))
 
-	system := getSystem(apiEndpoint, identifierString, projectID)
-	nameString := fmt.Sprintf("%s/%s/%s|%s", projectID, resourceType, system, identifierString)
+	system := getSystem(apiEndpoint, resourceType, projectID)
 
 	// Generate the final UUID using the endpoint-specific namespace.
-	return uuid.NewSHA1(endpointNamespace, []byte(nameString)).String()
+	return uuid.NewSHA1(endpointNamespace, fmt.Appendf(nil, "%s/%s", projectID, system)).String()
 }
 
 func getSystem(apiEndpoint string, identifier string, projectID string) string {

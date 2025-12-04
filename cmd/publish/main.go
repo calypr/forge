@@ -36,6 +36,7 @@ var ListCmd = &cobra.Command{
 	Use:   "list [remote]",
 	Short: "view all of the jobs currently catalogued in sower",
 	Long:  `The 'list' command is how jobs are displayed to the user`,
+	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		sc, err := sower.NewSowerClient(config.Remote(args[0]))
 		if err != nil {
