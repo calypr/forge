@@ -71,6 +71,8 @@ github.com/bytedance/sonic/loader v0.3.0 h1:dskwH8edlzNMctoruo8FPTJDF3vLtDT0sXZw
 github.com/bytedance/sonic/loader v0.3.0/go.mod h1:N8A3vUdtUebEY2/VQC0MyhYeKUFosQU6FxH2JmUe6VI=
 github.com/calypr/data-client v0.0.0-20251103160310-cc0ca9939fe7 h1:NVO5FpugLr+6rhTS/er1B2Ui8RIykbFL+IJcOXDdqBo=
 github.com/calypr/data-client v0.0.0-20251103160310-cc0ca9939fe7/go.mod h1:w0FrIP2TNqsBJcHUm3M04/5ZKKX7MHKRrYlYDU/A4sI=
+github.com/calypr/data-client v0.0.0-20251205171713-e01d41f735e9 h1:yHbDu0w/Ufu5TZ3WaMKL2zyI0mt5lydneg7Ob0ATCh8=
+github.com/calypr/data-client v0.0.0-20251205171713-e01d41f735e9/go.mod h1:mFUXQQnA/kwCtiZWcD/X1suecRAdmOaaYHFwD79KQ7w=
 github.com/calypr/gecko v0.0.0-20251110184938-909cb1b668e2 h1:ii28j/rzbOaxpUVnONEMmDm7FyZy03qBcHFFSNRsCbQ=
 github.com/calypr/gecko v0.0.0-20251110184938-909cb1b668e2/go.mod h1:SJfHDSOaN5xevCor2PVRZxHHJ/WwfAnBBddgnQcUwJo=
 github.com/calypr/git-drs v0.0.0-20251201212931-377c483d9fc0 h1:N/UtHeCY9neficWtSsNBu0NMaaSx62CwAsfShadEEtM=
@@ -81,6 +83,8 @@ github.com/calypr/git-drs v0.0.0-20251203183852-4efaabddd09f h1:mViDzHVYpjJc1v9P
 github.com/calypr/git-drs v0.0.0-20251203183852-4efaabddd09f/go.mod h1:fnhdZZnFjI89vxWA9IzFjwTXWCHEMm0m75wCYUSOjB8=
 github.com/calypr/git-drs v0.0.0-20251204172911-d6f800cc6947 h1:/sZ24FW+H53ed1BYmdZpQO/auAgjALCLMsY0N7MFrRw=
 github.com/calypr/git-drs v0.0.0-20251204172911-d6f800cc6947/go.mod h1:fnhdZZnFjI89vxWA9IzFjwTXWCHEMm0m75wCYUSOjB8=
+github.com/calypr/git-drs v0.0.0-20251205172356-279c16aaf4ce h1:p1yuPP2gEmOJJa/IrA5z2uoyUZQzyZAWazemipmN+l4=
+github.com/calypr/git-drs v0.0.0-20251205172356-279c16aaf4ce/go.mod h1:RLI/HuXG5v1tKYj4R43oqG4sQPNJ3lT0XGu98Q2zV0I=
 github.com/census-instrumentation/opencensus-proto v0.2.1/go.mod h1:f6KPmirojxKA12rnyqOA5BBL4O983OfeGPqjHWSTneU=
 github.com/client9/misspell v0.3.4/go.mod h1:qj6jICC3Q7zFZvVWo7KLAzC3yx5G7kyvSDkc90ppPyw=
 github.com/clipperhouse/uax29/v2 v2.2.0 h1:ChwIKnQN3kcZteTXMgb1wztSgaU+ZemkgWdohwgs8tY=
