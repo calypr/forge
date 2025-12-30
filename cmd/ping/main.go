@@ -21,10 +21,12 @@ var PingCmd = &cobra.Command{
 			remote = config.Remote("origin")
 		}
 
-		FenceClient, err := fence.NewFenceClient(remote)
+		FenceClient, closer, err := fence.NewFenceClient(remote)
 		if err != nil {
 			return err
 		}
+		defer closer()
+
 		resp, err := FenceClient.UserPing()
 		if err != nil {
 			return err

@@ -17,10 +17,12 @@ const POD_PUT_METHOD = "put"
 const POD_DELETE_METHOD = "delete"
 
 func RunEmpty(projectId string, remote config.Remote) (*sower.StatusResp, error) {
-	sc, err := sower.NewSowerClient(remote)
+	sc, closer, err := sower.NewSowerClient(remote)
 	if err != nil {
 		return nil, err
 	}
+	defer closer()
+
 	dispatchArgs := &sower.DispatchArgs{
 		ProjectId:   sc.ProjectId,
 		APIEndpoint: sc.Cred.APIEndpoint,
@@ -71,10 +73,11 @@ func RunPublish(token string, profile config.Remote) (*sower.StatusResp, error) 
 	if err != nil {
 		return nil, err
 	}
-	sc, err := sower.NewSowerClient(profile)
+	sc, closer, err := sower.NewSowerClient(profile)
 	if err != nil {
 		return nil, err
 	}
+	defer closer()
 
 	dispatchArgs := &sower.DispatchArgs{
 		BucketName:     sc.BucketName,

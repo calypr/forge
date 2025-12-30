@@ -24,12 +24,12 @@ func DispatchJob(s Sower, name string, args *DispatchArgs) (*StatusResp, error) 
 	return s.DispatchJob(name, args)
 }
 
-func NewSowerClient(remote config.Remote) (*SowerClient, error) {
-	gen3Client, err := client.NewGen3Client(remote)
+func NewSowerClient(remote config.Remote) (*SowerClient, func(), error) {
+	gen3Client, closer, err := client.NewGen3Client(remote)
 	if err != nil {
-		return nil, err
+		return nil, closer, err
 	}
-	return &SowerClient{Gen3Client: gen3Client}, nil
+	return &SowerClient{Gen3Client: gen3Client}, closer, nil
 }
 
 type SowerClient struct {

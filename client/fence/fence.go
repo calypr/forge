@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/calypr/data-client/client/commonUtils"
+	"github.com/calypr/data-client/client/common"
 	"github.com/calypr/forge/client"
 	"github.com/calypr/git-drs/config"
 )
@@ -32,12 +32,12 @@ func UserPing(f Fence) (*PingResp, error) {
 	return f.UserPing()
 }
 
-func NewFenceClient(remote config.Remote) (*FenceClient, error) {
-	gen3Client, err := client.NewGen3Client(remote)
+func NewFenceClient(remote config.Remote) (*FenceClient, func(), error) {
+	gen3Client, closer, err := client.NewGen3Client(remote)
 	if err != nil {
-		return nil, err
+		return nil, closer, err
 	}
-	return &FenceClient{Gen3Client: gen3Client}, nil
+	return &FenceClient{Gen3Client: gen3Client}, closer, nil
 }
 
 type FenceClient struct {
@@ -45,7 +45,7 @@ type FenceClient struct {
 }
 
 func (fc *FenceClient) UserPing() (*PingResp, error) {
-	reqResp := fc.MakeReq(http.MethodGet, commonUtils.FenceUserEndpoint, nil, nil)
+	reqResp := fc.MakeReq(http.MethodGet, common.FenceUserEndpoint, nil, nil)
 	if reqResp.Body == nil || reqResp.Err != nil {
 		return nil, reqResp.Err
 	}

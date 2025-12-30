@@ -358,13 +358,12 @@ func processDRSRecordsAndUpdateFHIR(drsRecords []*drs.DRSObject, LfsRecords []LF
 		foundMatch := false
 		containedResource := &cprb.ContainedResource{}
 		for _, drsRecord := range drsRecords {
-			for _, sum := range drsRecord.Checksums {
-				if sum.Type == drs.ChecksumTypeSHA256 && rec.OID == sum.Checksum {
-					drsRecord.Name = rec.Name
-					foundMatch = true
-					containedResource = templateDocRef(drsRecord, endpoint, project, researchStudyID)
-				}
+			if drsRecord.Checksums.SHA256 == rec.OID {
+				drsRecord.Name = rec.Name
+				foundMatch = true
+				containedResource = templateDocRef(drsRecord, endpoint, project, researchStudyID)
 			}
+
 			if foundMatch == true {
 				break
 			}

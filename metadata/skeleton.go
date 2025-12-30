@@ -43,40 +43,35 @@ func CreateResourceReference(resourceId string) *dtpb.Reference {
 }
 
 func templateDocRef(obj *drs.DRSObject, endpoint string, project string, rSID string) *cprb.ContainedResource {
-
 	id := uuid.NewSHA1(
 		uuid.NewSHA1(uuid.NameSpaceDNS, []byte(endpoint)),
-		fmt.Appendf(nil, "%s/%s", project, obj.Name)).String()
+		fmt.Appendf(nil, "%s/%s", project, obj.Name),
+	).String()
 
-	// Create the extensions for hashes
 	var extensions []*dtpb.Extension
-	for _, sum := range obj.Checksums {
-		if sum.Type == drs.ChecksumTypeMD5 {
-			extensions = append(extensions, &dtpb.Extension{
-				Url: &dtpb.Uri{Value: endpoint + FHIR_STRUCTURE_DEFINITION + "/checksum-md5"},
-				Value: &dtpb.Extension_ValueX{
-					Choice: &dtpb.Extension_ValueX_StringValue{StringValue: &dtpb.String{Value: sum.Checksum}},
-				},
-			})
-		}
-		if sum.Type == drs.ChecksumTypeSHA256 {
-			extensions = append(extensions, &dtpb.Extension{
-				Url: &dtpb.Uri{Value: "http://" + endpoint + FHIR_STRUCTURE_DEFINITION + "/checksum-sha256"},
-				Value: &dtpb.Extension_ValueX{
-					Choice: &dtpb.Extension_ValueX_StringValue{StringValue: &dtpb.String{Value: sum.Checksum}},
-				},
-			})
-		}
+	if obj.Checksums.MD5 != "" {
+		extensions = append(extensions, &dtpb.Extension{
+			Url: &dtpb.Uri{Value: endpoint + FHIR_STRUCTURE_DEFINITION + "/checksum-md5"},
+			Value: &dtpb.Extension_ValueX{
+				Choice: &dtpb.Extension_ValueX_StringValue{StringValue: &dtpb.String{Value: obj.Checksums.MD5}},
+			},
+		})
+	}
+	if obj.Checksums.SHA256 != "" {
+		extensions = append(extensions, &dtpb.Extension{
+			Url: &dtpb.Uri{Value: "http://" + endpoint + FHIR_STRUCTURE_DEFINITION + "/checksum-sha256"},
+			Value: &dtpb.Extension_ValueX{
+				Choice: &dtpb.Extension_ValueX_StringValue{StringValue: &dtpb.String{Value: obj.Checksums.SHA256}},
+			},
+		})
 	}
 
-	// Determine the URL for the attachment
 	var url *dtpb.Url
 	if len(obj.AccessMethods) > 0 {
 		// TODO: Big assumption here assuming that there exists only one url per FHIR attachment
 		url = &dtpb.Url{Value: obj.AccessMethods[0].AccessURL.URL}
 	}
 
-	// Create the DocumentReference
 	dr := &drpb.DocumentReference{
 		Id:        &dtpb.Id{Value: id},
 		Status:    &drpb.DocumentReference_StatusCode{Value: code.DocumentReferenceStatusCode_CURRENT},

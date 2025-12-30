@@ -38,10 +38,11 @@ var ListCmd = &cobra.Command{
 	Long:  `The 'list' command is how jobs are displayed to the user`,
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		sc, err := sower.NewSowerClient(config.Remote(args[0]))
+		sc, closer, err := sower.NewSowerClient(config.Remote(args[0]))
 		if err != nil {
 			return err
 		}
+		defer closer()
 		vals, err := sc.List()
 		if len(vals) == 0 {
 			fmt.Printf("There are no jobs to list: %s\n", vals)
@@ -69,10 +70,12 @@ var StatusCmd = &cobra.Command{
 			remote = config.Remote("")
 			fmt.Printf("Using default remote: %s\n", remote)
 		}
-		sc, err := sower.NewSowerClient(remote)
+		sc, closer, err := sower.NewSowerClient(remote)
 		if err != nil {
 			return err
 		}
+		defer closer()
+
 		status, err := sc.Status(args[0])
 		if err != nil {
 			return err
@@ -97,10 +100,12 @@ var OutputCmd = &cobra.Command{
 			remote = config.Remote("")
 			fmt.Printf("Using default remote: %s\n", remote)
 		}
-		sc, err := sower.NewSowerClient(remote)
+		sc, closer, err := sower.NewSowerClient(remote)
 		if err != nil {
 			return err
 		}
+		defer closer()
+
 		output, err := sc.Output(args[0])
 		if err != nil {
 			return err

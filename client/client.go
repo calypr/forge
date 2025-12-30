@@ -2,6 +2,7 @@ package client
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"net/http"
@@ -13,50 +14,52 @@ import (
 	"github.com/calypr/git-drs/config"
 	drsConfig "github.com/calypr/git-drs/config"
 
-	"github.com/calypr/data-client/client/commonUtils"
-	"github.com/calypr/data-client/client/jwt"
+	"github.com/calypr/data-client/client/conf"
+	"github.com/calypr/data-client/client/logs"
+	index_client "github.com/calypr/git-drs/client/indexd"
 )
 
 type Gen3Client struct {
 	Base       *url.URL
-	Cred       jwt.Credential
+	Cred       *conf.Credential
 	ProjectId  string
 	BucketName string
 }
 
 // load repo-level config and return a new IndexDClient
-func NewGen3Client(remote config.Remote) (*Gen3Client, error) {
-	var conf jwt.Configure
+func NewGen3Client(remote config.Remote) (*Gen3Client, func(), error) {
 
 	cfg, err := drsConfig.LoadConfig()
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	gfc, ok := cfg.Remotes[remote]
 	if !ok {
-		return nil, fmt.Errorf("remote %s not found in config: %v", remote, cfg.Remotes)
+		return nil, nil, fmt.Errorf("remote %s not found in config: %v", remote, cfg.Remotes)
 	}
 
-	cred, err := conf.ParseConfig(string(remote))
+	logger, closer := logs.New(string(remote))
+
+	cred, err := conf.NewConfigure(logger).Load(string(remote))
 	if err != nil {
-		return nil, err
+		return nil, closer, err
 	}
 
 	baseUrl, err := url.Parse(cred.APIEndpoint)
 	if err != nil {
-		return nil, fmt.Errorf("error parsing base URL from profile %s: %v", remote, err)
+		return nil, closer, fmt.Errorf("error parsing base URL from profile %s: %v", remote, err)
 	}
 
 	// get the gen3Project and gen3Bucket from the config
 	projectId := gfc.Gen3.ProjectID
 	if projectId == "" {
-		return nil, fmt.Errorf("No gen3 project specified. Please provide a gen3Project key in your .drsconfig")
+		return nil, closer, fmt.Errorf("No gen3 project specified. Please provide a gen3Project key in your .drsconfig")
 	}
 	bucketName := gfc.Gen3.Bucket
 	if bucketName == "" {
-		return nil, fmt.Errorf("No gen3 bucket specified. Please provide a gen3Bucket key in your .drsconfig")
+		return nil, closer, fmt.Errorf("No gen3 bucket specified. Please provide a gen3Bucket key in your .drsconfig")
 	}
-	return &Gen3Client{Base: baseUrl, Cred: cred, ProjectId: projectId, BucketName: bucketName}, err
+	return &Gen3Client{Base: baseUrl, Cred: cred, ProjectId: projectId, BucketName: bucketName}, closer, err
 }
 
 type Resp struct {
@@ -90,8 +93,7 @@ func (cl *Gen3Client) MakeReq(method string, path string, body []byte, params ma
 	}
 	// Update AccessToken if token is old
 	if expiration.Before(time.Now()) {
-		r := jwt.Request{}
-		err := r.RequestNewAccessToken(cl.Base.String()+commonUtils.FenceAccessTokenEndpoint, &cl.Cred)
+		err := index_client.RefreshToken(context.Background(), cl.Cred)
 		if err != nil {
 			return &Resp{nil, err}
 		}
