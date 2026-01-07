@@ -56,7 +56,7 @@ type MetaStructure struct {
 	Path     string   `json:"path"`
 }
 
-func RunMetaInit(outPath string, remote config.Remote) error {
+func CreateMeta(outPath string, remote config.Remote) error {
 	var rsID string
 	var err error
 	cfg, err := config.LoadConfig()

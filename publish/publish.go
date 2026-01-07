@@ -49,7 +49,8 @@ func RunPublish(token string, profile config.Remote) (*sower.StatusResp, error) 
 	if err != nil {
 		return nil, err
 	}
-	remote, err := repo.Remote(string(profile))
+	// NOTE: hardcode to retrieve from git remote "origin"
+	remote, err := repo.Remote("origin")
 	if err != nil {
 		return nil, fmt.Errorf("failed to get 'origin' remote: %w", err)
 	}

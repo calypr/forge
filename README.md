@@ -10,10 +10,10 @@ This repo is designed to produce git hook commands that take care of metadata ad
 
 ```
 git clone repo
-forge init -- exactly same as git-dirs init, just a wrapper around it
+forge init -- exactly same as git-drs init, just a wrapper around it
 git add files
 git commit -m "test" -- same as git-drs
-git push origin main -- same as git-dirs
+git push origin main -- same as git-drs
 forge publish [github personal access token]
 ```
 

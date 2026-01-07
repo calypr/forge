@@ -15,14 +15,24 @@ var PublishCmd = &cobra.Command{
 	Long:  `The 'publish' command is how metadata is handled in calypr.`,
 	Args:  cobra.RangeArgs(1, 2),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		var remote config.Remote
+		var remoteName string
+
 		if len(args) == 2 {
-			remote = config.Remote(args[1])
-			fmt.Printf("Using remote: %s\n", remote)
+			remoteName = args[1]
 		} else {
-			remote = config.Remote("")
-			fmt.Printf("Using default remote: %s\n", remote)
+			remoteName = ""
 		}
+
+		cfg, err := config.LoadConfig()
+		if err != nil {
+			return fmt.Errorf("unable to load config: %w", err)
+		}
+		remote, err := cfg.GetRemoteOrDefault(remoteName)
+		if err != nil {
+			return fmt.Errorf("could not locate remote: %w", err)
+		}
+		fmt.Printf("Using remote: %s\n", string(remote))
+
 		resp, err := publish.RunPublish(args[0], remote)
 		if err != nil {
 			return err
@@ -44,6 +54,10 @@ var ListCmd = &cobra.Command{
 		}
 		defer closer()
 		vals, err := sc.List()
+		if err != nil {
+			return fmt.Errorf("unable to list jobs: %w", err)
+		}
+
 		if len(vals) == 0 {
 			fmt.Printf("There are no jobs to list: %s\n", vals)
 		} else {
@@ -62,14 +76,24 @@ var StatusCmd = &cobra.Command{
 	A specific job's UID can be found from running the list command`,
 	Args: cobra.RangeArgs(1, 2),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		var remote config.Remote
+
+		var remoteName string
 		if len(args) == 2 {
-			remote = config.Remote(args[1])
-			fmt.Printf("Using remote: %s\n", remote)
+			remoteName = args[1]
 		} else {
-			remote = config.Remote("")
-			fmt.Printf("Using default remote: %s\n", remote)
+			remoteName = ""
 		}
+
+		cfg, err := config.LoadConfig()
+		if err != nil {
+			return fmt.Errorf("unable to load config: %w", err)
+		}
+
+		remote, err := cfg.GetRemoteOrDefault(remoteName)
+		if err != nil {
+			return fmt.Errorf("could not locate remote: %w", err)
+		}
+
 		sc, closer, err := sower.NewSowerClient(remote)
 		if err != nil {
 			return err
@@ -92,14 +116,24 @@ var OutputCmd = &cobra.Command{
 	A specific job's UID can be found from running the list command`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		var remote config.Remote
+		var remoteName string
 		if len(args) == 2 {
-			remote = config.Remote(args[1])
-			fmt.Printf("Using remote: %s\n", remote)
+			remoteName = args[1]
 		} else {
-			remote = config.Remote("")
-			fmt.Printf("Using default remote: %s\n", remote)
+			remoteName = ""
 		}
+
+		cfg, err := config.LoadConfig()
+		if err != nil {
+			return fmt.Errorf("unable to load config: %w", err)
+		}
+
+		remote, err := cfg.GetRemoteOrDefault(remoteName)
+		if err != nil {
+			return fmt.Errorf("could not locate remote: %w", err)
+		}
+		fmt.Printf("Using remote: %s\n", string(remote))
+
 		sc, closer, err := sower.NewSowerClient(remote)
 		if err != nil {
 			return err
