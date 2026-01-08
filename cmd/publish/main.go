@@ -5,25 +5,27 @@ import (
 
 	"github.com/calypr/forge/client/sower"
 	"github.com/calypr/forge/publish"
-	"github.com/calypr/git-drs/config"
+	"github.com/calypr/forge/utils/remoteutil"
 	"github.com/spf13/cobra"
 )
 
+var (
+	publishRemote string
+)
+
 var PublishCmd = &cobra.Command{
-	Use:   "publish <github_personal_access_token> [remote]",
+	Use:   "publish <github_personal_access_token>",
 	Short: "create metadata upload job for FHIR ndjson files",
 	Long:  `The 'publish' command is how metadata is handled in calypr.`,
-	Args:  cobra.RangeArgs(1, 2),
+	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		var remote config.Remote
-		if len(args) == 2 {
-			remote = config.Remote(args[1])
-			fmt.Printf("Using remote: %s\n", remote)
-		} else {
-			remote = config.Remote("")
-			fmt.Printf("Using default remote: %s\n", remote)
+		remote, err := remoteutil.LoadRemoteOrDefault(publishRemote)
+		if err != nil {
+			return fmt.Errorf("could not locate remote: %w", err)
 		}
-		resp, err := publish.RunPublish(args[0], remote)
+		fmt.Printf("Using remote: %s\n", string(*remote))
+
+		resp, err := publish.RunPublish(args[0], *remote)
 		if err != nil {
 			return err
 		}
@@ -32,18 +34,32 @@ var PublishCmd = &cobra.Command{
 	},
 }
 
+var (
+	listRemote string
+)
+
 var ListCmd = &cobra.Command{
-	Use:   "list [remote]",
+	Use:   "list",
 	Short: "view all of the jobs currently catalogued in sower",
 	Long:  `The 'list' command is how jobs are displayed to the user`,
-	Args:  cobra.ExactArgs(1),
+	Args:  cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		sc, closer, err := sower.NewSowerClient(config.Remote(args[0]))
+		remote, err := remoteutil.LoadRemoteOrDefault(listRemote)
+		if err != nil {
+			return fmt.Errorf("could not locate remote: %w", err)
+		}
+		fmt.Printf("Using remote: %s\n", string(*remote))
+
+		sc, closer, err := sower.NewSowerClient(*remote)
 		if err != nil {
 			return err
 		}
 		defer closer()
 		vals, err := sc.List()
+		if err != nil {
+			return fmt.Errorf("unable to list jobs: %w", err)
+		}
+
 		if len(vals) == 0 {
 			fmt.Printf("There are no jobs to list: %s\n", vals)
 		} else {
@@ -55,22 +71,24 @@ var ListCmd = &cobra.Command{
 	},
 }
 
+var (
+	statusRemote string
+)
+
 var StatusCmd = &cobra.Command{
-	Use:   "status <UID> [remote]",
+	Use:   "status <UID>",
 	Short: "view the status of a specific job on sower",
 	Long: `The 'status' command is how sower job status is communicated to the user.
 	A specific job's UID can be found from running the list command`,
-	Args: cobra.RangeArgs(1, 2),
+	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		var remote config.Remote
-		if len(args) == 2 {
-			remote = config.Remote(args[1])
-			fmt.Printf("Using remote: %s\n", remote)
-		} else {
-			remote = config.Remote("")
-			fmt.Printf("Using default remote: %s\n", remote)
+		remote, err := remoteutil.LoadRemoteOrDefault(statusRemote)
+		if err != nil {
+			return fmt.Errorf("could not locate remote: %w", err)
 		}
-		sc, closer, err := sower.NewSowerClient(remote)
+		fmt.Printf("Using remote: %s\n", string(*remote))
+
+		sc, closer, err := sower.NewSowerClient(*remote)
 		if err != nil {
 			return err
 		}
@@ -85,22 +103,24 @@ var StatusCmd = &cobra.Command{
 	},
 }
 
+var (
+	outputRemote string
+)
+
 var OutputCmd = &cobra.Command{
-	Use:   "output <UID> [remote]",
+	Use:   "output <UID>",
 	Short: "view output logs of a specific job on sower",
 	Long: `The 'output' command is how sower job output logs are communicated to the user.
 	A specific job's UID can be found from running the list command`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		var remote config.Remote
-		if len(args) == 2 {
-			remote = config.Remote(args[1])
-			fmt.Printf("Using remote: %s\n", remote)
-		} else {
-			remote = config.Remote("")
-			fmt.Printf("Using default remote: %s\n", remote)
+		remote, err := remoteutil.LoadRemoteOrDefault(outputRemote)
+		if err != nil {
+			return fmt.Errorf("could not locate remote: %w", err)
 		}
-		sc, closer, err := sower.NewSowerClient(remote)
+		fmt.Printf("Using remote: %s\n", string(*remote))
+
+		sc, closer, err := sower.NewSowerClient(*remote)
 		if err != nil {
 			return err
 		}
@@ -113,4 +133,11 @@ var OutputCmd = &cobra.Command{
 		fmt.Printf("Logs: %s\n", output.Output)
 		return nil
 	},
+}
+
+func init() {
+	PublishCmd.Flags().StringVarP(&publishRemote, "remote", "r", "", "target DRS server (default: default_remote)")
+	ListCmd.Flags().StringVarP(&listRemote, "remote", "r", "", "target DRS server (default: default_remote)")
+	StatusCmd.Flags().StringVarP(&statusRemote, "remote", "r", "", "target DRS server (default: default_remote)")
+	OutputCmd.Flags().StringVarP(&outputRemote, "remote", "r", "", "target DRS server (default: default_remote)")
 }

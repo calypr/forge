@@ -15,6 +15,9 @@ var RootCmd = &cobra.Command{
 	Short: "A powerful command-line tool for project management.",
 	Long: `Forge is a versatile CLI application designed to streamline various
 development and project management tasks.`,
+	CompletionOptions: cobra.CompletionOptions{
+		DisableDefaultCmd: true,
+	},
 }
 
 func init() {

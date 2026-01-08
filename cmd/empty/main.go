@@ -4,30 +4,37 @@ import (
 	"fmt"
 
 	"github.com/calypr/forge/publish"
-	"github.com/calypr/git-drs/config"
+	"github.com/calypr/forge/utils/remoteutil"
 	"github.com/spf13/cobra"
 )
 
+var (
+	emptyRemote string
+)
+
 var EmptyCmd = &cobra.Command{
-	Use:   "empty <project-id> [remote]",
+	Use:   "empty <project-id>",
 	Short: "empty metadata for a project",
 	Long:  `The 'empty' command is how metadata is removed in calypr.`,
-	Args:  cobra.RangeArgs(1, 2),
+	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		projectID := args[0]
-		var remote config.Remote
-		if len(args) == 2 {
-			remote = config.Remote(args[1])
-			fmt.Printf("Using remote: %s\n", remote)
-		} else {
-			remote = config.Remote("")
-			fmt.Printf("Using default remote: %s\n", remote)
+
+		remote, err := remoteutil.LoadRemoteOrDefault(emptyRemote)
+		if err != nil {
+			return fmt.Errorf("could not locate remote: %w", err)
 		}
-		resp, err := publish.RunEmpty(projectID, remote)
+		fmt.Printf("Using remote: %s\n", string(*remote))
+
+		resp, err := publish.RunEmpty(projectID, *remote)
 		if err != nil {
 			return err
 		}
 		fmt.Printf("Uid: %s\t Name: %s\t Status: %s\n", resp.Uid, resp.Name, resp.Status)
 		return nil
 	},
+}
+
+func init() {
+	EmptyCmd.Flags().StringVarP(&emptyRemote, "remote", "r", "", "target DRS server (default: default_remote)")
 }
