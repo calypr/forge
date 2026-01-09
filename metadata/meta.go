@@ -274,7 +274,7 @@ func getResearchStudy(fhirDirectory string, projectId string, endpoint string, m
 	return id, nil
 }
 
-type LSFIles struct {
+type LSFiles struct {
 	Files []LFSRecord `json:"files"`
 }
 
@@ -297,7 +297,7 @@ func findLFSRecords() ([]LFSRecord, error) {
 		}
 		return nil, fmt.Errorf("failed to run git-lfs command: %w", err)
 	}
-	var records LSFIles
+	var records LSFiles
 	if err := json.Unmarshal(output, &records); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal JSON output: %w", err)
 	}
