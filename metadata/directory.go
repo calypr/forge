@@ -166,7 +166,6 @@ func BuildDirectoryTreeFromDocRef(endpoint string, docRef *drpb.DocumentReferenc
 		}
 
 		if !isAlreadyLinked {
-			fmt.Println("HELLO WE HERE")
 			parentDir.Child = append(parentDir.Child, fileRef)
 		}
 	}

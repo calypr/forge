@@ -76,7 +76,7 @@ func CreateMeta(outPath string, remote config.Remote) error {
 
 	idxCl, ok := val.(*indexd_client.IndexDClient)
 	if !ok {
-		return fmt.Errorf("Config is not IndexDClient")
+		return fmt.Errorf("config is not IndexDClient")
 	}
 
 	marshaller, err := jsonformat.NewMarshaller(false, "", "", fver.R5)
@@ -274,7 +274,7 @@ func getResearchStudy(fhirDirectory string, projectId string, endpoint string, m
 	return id, nil
 }
 
-type LSFIles struct {
+type LSFiles struct {
 	Files []LFSRecord `json:"files"`
 }
 
@@ -297,7 +297,7 @@ func findLFSRecords() ([]LFSRecord, error) {
 		}
 		return nil, fmt.Errorf("failed to run git-lfs command: %w", err)
 	}
-	var records LSFIles
+	var records LSFiles
 	if err := json.Unmarshal(output, &records); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal JSON output: %w", err)
 	}
@@ -364,7 +364,7 @@ func processDRSRecordsAndUpdateFHIR(drsRecords []*drs.DRSObject, LfsRecords []LF
 				containedResource = templateDocRef(drsRecord, endpoint, project, researchStudyID)
 			}
 
-			if foundMatch == true {
+			if foundMatch {
 				break
 			}
 		}

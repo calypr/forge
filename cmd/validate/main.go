@@ -23,13 +23,20 @@ import (
 
 // Holds the value of the --out-dir flag
 var outputDir string
+var dataPath string
+var edgePath string
+var configPath string
+
 var ValidateParentCmd = &cobra.Command{
 	Use:   "validate",
 	Short: "Contains subcommands for validating config, data, and edges",
 }
 
 func init() {
+	ValidateDataCmd.Flags().StringVarP(&dataPath, "path", "p", META_PATH, "Path to metadata file(s) to validate")
+	ValidateEdgeCmd.Flags().StringVarP(&edgePath, "path", "p", META_PATH, "Path to metadata files directory")
 	ValidateEdgeCmd.Flags().StringVarP(&outputDir, "out-dir", "o", "", "Directory to save vertices and edges files")
+	ValidateConfigCmd.Flags().StringVarP(&configPath, "path", "p", CONFIG_PATH, "Path to config file to validate")
 }
 
 const META_PATH = "META"
@@ -37,14 +44,12 @@ const CONFIG_PATH = "CONFIG"
 
 // ValidateCmd remains unchanged
 var ValidateDataCmd = &cobra.Command{
-	Use:   "data <path_to_metadata_file(s)>",
-	Short: "data data files given a jsonschema and a ndjson data target file or directory",
-	Args:  cobra.MaximumNArgs(1),
+	Use:   "data",
+	Short: "validate metadata files given a jsonschema and a ndjson data target file or directory",
+	Args:  cobra.NoArgs,
+	Long:  "Validates metadata files. Use --path to specify a file or directory (defaults to META if not provided)",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		path := META_PATH
-		if len(args) > 0 {
-			path = args[0]
-		}
+		path := dataPath
 		sch, err := schema.NewSchema()
 		if err != nil {
 			return errors.Wrap(err, "failed to create schema")
@@ -115,15 +120,12 @@ var ValidateDataCmd = &cobra.Command{
 }
 
 var ValidateEdgeCmd = &cobra.Command{
-	Use:   "edge <path_to_metadata_files>",
+	Use:   "edge",
 	Short: "Check for orphaned edges in graph data from FHIR .ndjson files",
-	Long:  "Generates graph elements from FHIR .ndjson files and checks for edges referencing non-existent vertices",
-	Args:  cobra.MaximumNArgs(1),
+	Long:  "Generates graph elements from FHIR .ndjson files and checks for edges referencing non-existent vertices. Use --path to specify directory (defaults to META if not provided)",
+	Args:  cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		path := META_PATH
-		if len(args) > 0 {
-			path = args[0]
-		}
+		path := edgePath
 		sch, err := schema.NewSchema()
 		if err != nil {
 			return errors.Wrap(err, "failed to create schema")
@@ -361,14 +363,12 @@ var ValidateEdgeCmd = &cobra.Command{
 }
 
 var ValidateConfigCmd = &cobra.Command{
-	Use:   "config <path_to_config_file>",
-	Short: "config explorer config file",
-	Args:  cobra.MaximumNArgs(1),
+	Use:   "config",
+	Short: "validate explorer config file",
+	Long:  "Validates explorer config file. Use --path to specify config file (defaults to CONFIG if not provided)",
+	Args:  cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		path := CONFIG_PATH
-		if len(args) > 0 {
-			path = args[0]
-		}
+		path := configPath
 
 		info, err := os.Stat(path)
 		if err != nil {
