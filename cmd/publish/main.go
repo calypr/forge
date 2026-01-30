@@ -1,9 +1,10 @@
 package publish
 
 import (
+	"context"
 	"fmt"
 
-	"github.com/calypr/forge/client/sower"
+	"github.com/calypr/forge/client"
 	"github.com/calypr/forge/publish"
 	"github.com/calypr/forge/utils/remoteutil"
 	"github.com/spf13/cobra"
@@ -50,12 +51,12 @@ var ListCmd = &cobra.Command{
 		}
 		fmt.Printf("Using remote: %s\n", string(*remote))
 
-		sc, closer, err := sower.NewSowerClient(*remote)
+		sc, closer, err := client.NewGen3Client(*remote, g3client.WithClients(g3client.SowerClient, g3client.FenceClient))
 		if err != nil {
 			return err
 		}
 		defer closer()
-		vals, err := sc.List()
+		vals, err := sc.GetGen3Interface().Sower().List(context.Background())
 		if err != nil {
 			return fmt.Errorf("unable to list jobs: %w", err)
 		}
@@ -88,13 +89,13 @@ var StatusCmd = &cobra.Command{
 		}
 		fmt.Printf("Using remote: %s\n", string(*remote))
 
-		sc, closer, err := sower.NewSowerClient(*remote)
+		sc, closer, err := client.NewGen3Client(*remote, g3client.WithClients(g3client.SowerClient, g3client.FenceClient))
 		if err != nil {
 			return err
 		}
 		defer closer()
 
-		status, err := sc.Status(args[0])
+		status, err := sc.GetGen3Interface().Sower().Status(context.Background(), args[0])
 		if err != nil {
 			return err
 		}
@@ -120,13 +121,13 @@ var OutputCmd = &cobra.Command{
 		}
 		fmt.Printf("Using remote: %s\n", string(*remote))
 
-		sc, closer, err := sower.NewSowerClient(*remote)
+		sc, closer, err := client.NewGen3Client(*remote, g3client.WithClients(g3client.SowerClient, g3client.FenceClient))
 		if err != nil {
 			return err
 		}
 		defer closer()
 
-		output, err := sc.Output(args[0])
+		output, err := sc.GetGen3Interface().Sower().Output(context.Background(), args[0])
 		if err != nil {
 			return err
 		}

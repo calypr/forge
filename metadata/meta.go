@@ -3,6 +3,7 @@ package metadata
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -11,9 +12,9 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/calypr/data-client/indexd/drs"
 	indexd_client "github.com/calypr/git-drs/client/indexd"
 	"github.com/calypr/git-drs/config"
-	"github.com/calypr/git-drs/drs"
 	"github.com/calypr/git-drs/drslog"
 	fver "github.com/google/fhir/go/fhirversion"
 	"github.com/google/fhir/go/jsonformat"
@@ -69,7 +70,7 @@ func CreateMeta(outPath string, remote config.Remote) error {
 		return err
 	}
 
-	val, err := cfg.GetRemoteClient(remote, logger)
+	sc, err := cfg.GetRemoteClient(remote, logger)
 	if err != nil {
 		return err
 	}
@@ -88,7 +89,7 @@ func CreateMeta(outPath string, remote config.Remote) error {
 		return fmt.Errorf("failed to create FHIR unmarshaller: %v", err)
 	}
 
-	rsID, err = getResearchStudy(META_DIR, idxCl.ProjectId, idxCl.Base.Host, marshaller, unmarshaller)
+	rsID, err = getResearchStudy(META_DIR, sc.GetProjectId(), sc.GetGen3Interface().GetCredential().APIEndpoint, marshaller, unmarshaller)
 	if err != nil {
 		return err
 	}
@@ -98,7 +99,7 @@ func CreateMeta(outPath string, remote config.Remote) error {
 	}
 
 	// Fetch all records from the channel into a slice
-	recs, err := idxCl.ListObjectsByProject(idxCl.ProjectId)
+	recs, err := sc.ListObjectsByProject(context.Background(), sc.GetProjectId())
 	if err != nil {
 		return fmt.Errorf("error listing indexd records: %v", err)
 	}
@@ -117,7 +118,7 @@ func CreateMeta(outPath string, remote config.Remote) error {
 	}
 
 	// Now that we have a channel, we can pass it directly to the merging function
-	if err := processDRSRecordsAndUpdateFHIR(collectRecs, LFSRecords, outPath, idxCl.Base.Host, idxCl.ProjectId, rsID); err != nil {
+	if err := processDRSRecordsAndUpdateFHIR(collectRecs, LFSRecords, outPath, sc.GetGen3Interface().GetCredential().APIEndpoint, sc.GetProjectId(), rsID); err != nil {
 		return fmt.Errorf("failed to process DRS records: %v", err)
 	}
 

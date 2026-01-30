@@ -1,10 +1,12 @@
 package ping
 
 import (
+	"context"
 	"fmt"
 	"log"
 
-	"github.com/calypr/forge/client/fence"
+	"github.com/calypr/data-client/g3client"
+	"github.com/calypr/forge/client"
 	"github.com/calypr/forge/utils/remoteutil"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v2"
@@ -25,13 +27,13 @@ var PingCmd = &cobra.Command{
 		}
 		fmt.Printf("Using remote: %s\n", string(*remote))
 
-		FenceClient, closer, err := fence.NewFenceClient(*remote)
+		sc, closer, err := client.NewGen3Client(*remote, g3client.WithClients(g3client.FenceClient))
 		if err != nil {
 			return err
 		}
 		defer closer()
 
-		resp, err := FenceClient.UserPing()
+		resp, err := sc.GetGen3Interface().Fence().UserPing(context.Background())
 		if err != nil {
 			return err
 		}

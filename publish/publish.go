@@ -1,11 +1,14 @@
 package publish
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"net/http"
 
-	"github.com/calypr/forge/client/sower"
+	"github.com/calypr/data-client/g3client"
+	"github.com/calypr/data-client/sower"
+	"github.com/calypr/forge/client"
 	"github.com/calypr/forge/utils/gitutil"
 	"github.com/calypr/git-drs/config"
 )
@@ -17,19 +20,21 @@ const POD_PUT_METHOD = "put"
 const POD_DELETE_METHOD = "delete"
 
 func RunEmpty(projectId string, remote config.Remote) (*sower.StatusResp, error) {
-	sc, closer, err := sower.NewSowerClient(remote)
+	sc, closer, err := client.NewGen3Client(
+		remote, g3client.WithClients(g3client.SowerClient, g3client.FenceClient))
 	if err != nil {
 		return nil, err
 	}
 	defer closer()
 
 	dispatchArgs := &sower.DispatchArgs{
-		ProjectId:   sc.ProjectId,
-		APIEndpoint: sc.Cred.APIEndpoint,
-		Profile:     sc.Cred.Profile,
+		ProjectId:   sc.GetProjectId(),
+		APIEndpoint: sc.GetGen3Interface().GetCredential().APIEndpoint,
+		Profile:     sc.GetGen3Interface().GetCredential().Profile,
 		Method:      POD_DELETE_METHOD,
 	}
-	resp, err := sc.DispatchJob(
+	resp, err := sc.GetGen3Interface().Sower().DispatchJob(
+		context.Background(),
 		FHIR_JOB_NAME,
 		dispatchArgs,
 	)
@@ -74,17 +79,17 @@ func RunPublish(token string, profile config.Remote) (*sower.StatusResp, error) 
 	if err != nil {
 		return nil, err
 	}
-	sc, closer, err := sower.NewSowerClient(profile)
+	sc, closer, err := client.NewGen3Client(profile, g3client.WithClients(g3client.SowerClient, g3client.FenceClient))
 	if err != nil {
 		return nil, err
 	}
 	defer closer()
 
 	dispatchArgs := &sower.DispatchArgs{
-		BucketName:     sc.BucketName,
-		ProjectId:      sc.ProjectId,
-		APIEndpoint:    sc.Cred.APIEndpoint,
-		Profile:        sc.Cred.Profile,
+		BucketName:     sc.GetBucketName(),
+		ProjectId:      sc.GetProjectId(),
+		APIEndpoint:    sc.GetGen3Interface().GetCredential().APIEndpoint,
+		Profile:        sc.GetGen3Interface().GetCredential().Profile,
 		Method:         POD_PUT_METHOD,
 		GHPAccessToken: token,
 		GHUserName:     username,
@@ -92,7 +97,8 @@ func RunPublish(token string, profile config.Remote) (*sower.StatusResp, error) 
 		GHCommitHash:   hash.String(),
 	}
 
-	resp, err := sc.DispatchJob(
+	resp, err := sc.GetGen3Interface().Sower().DispatchJob(
+		context.Background(),
 		FHIR_JOB_NAME,
 		dispatchArgs,
 	)
