@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"github.com/calypr/data-client/indexd/drs"
-	indexd_client "github.com/calypr/git-drs/client/indexd"
 	"github.com/calypr/git-drs/config"
 	"github.com/calypr/git-drs/drslog"
 	fver "github.com/google/fhir/go/fhirversion"
@@ -73,11 +72,6 @@ func CreateMeta(outPath string, remote config.Remote) error {
 	sc, err := cfg.GetRemoteClient(remote, logger)
 	if err != nil {
 		return err
-	}
-
-	idxCl, ok := val.(*indexd_client.IndexDClient)
-	if !ok {
-		return fmt.Errorf("config is not IndexDClient")
 	}
 
 	marshaller, err := jsonformat.NewMarshaller(false, "", "", fver.R5)
