@@ -2,8 +2,6 @@ module github.com/calypr/forge
 
 go 1.24.2
 
-replace github.com/calypr/data-client v0.0.0-20260210235422-eab5bbef7b2f => ../data-client
-
 require (
 	github.com/bmeg/golib v0.0.0-20200725232156-e799a31439fc
 	github.com/bmeg/grip v0.0.0-20251106174949-7f0784126fbb
@@ -12,7 +10,7 @@ require (
 	github.com/bytedance/sonic v1.15.0
 	github.com/calypr/data-client v0.0.0-20260210235422-eab5bbef7b2f
 	github.com/calypr/gecko v0.0.0-20251110184938-909cb1b668e2
-	github.com/calypr/git-drs v0.5.15-0.20260211205724-aedb051e57d7
+	github.com/calypr/git-drs v0.5.15-0.20260211210513-751923a7310d
 	github.com/cockroachdb/errors v1.11.3
 	github.com/go-git/go-git/v5 v5.13.0
 	github.com/google/fhir/go v0.7.5-0.20250925033537-1f5b5b9427ff
@@ -101,6 +99,7 @@ require (
 	golang.org/x/exp v0.0.0-20240719175910-8a7402abbf56 // indirect
 	golang.org/x/net v0.45.0 // indirect
 	golang.org/x/oauth2 v0.34.0 // indirect
+	golang.org/x/sync v0.19.0 // indirect
 	golang.org/x/sys v0.39.0 // indirect
 	golang.org/x/term v0.36.0 // indirect
 	golang.org/x/text v0.29.0 // indirect
