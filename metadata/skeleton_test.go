@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/calypr/data-client/indexd/drs"
+	"github.com/calypr/data-client/drs"
 	dtpb "github.com/google/fhir/go/proto/google/fhir/proto/r5/core/datatypes_go_proto"
 )
 

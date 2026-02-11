@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/calypr/data-client/indexd/drs"
+	"github.com/calypr/data-client/drs"
 	code "github.com/google/fhir/go/proto/google/fhir/proto/r5/core/codes_go_proto"
 	dtpb "github.com/google/fhir/go/proto/google/fhir/proto/r5/core/datatypes_go_proto"
 	cprb "github.com/google/fhir/go/proto/google/fhir/proto/r5/core/resources/bundle_and_contained_resource_go_proto"

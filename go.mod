@@ -8,11 +8,11 @@ require (
 	github.com/bmeg/jsonschema/v6 v6.0.4
 	github.com/bmeg/jsonschemagraph v0.0.4-0.20251017205345-236d2de9887c
 	github.com/bytedance/sonic v1.15.0
-	github.com/calypr/data-client v0.0.0-20260130182737-249227ff8fc1
+	github.com/calypr/data-client v0.0.0-20260210235422-eab5bbef7b2f
 	github.com/calypr/gecko v0.0.0-20251110184938-909cb1b668e2
-	github.com/calypr/git-drs v0.5.3-0.20260130182957-1b399dbb7748
+	github.com/calypr/git-drs v0.5.14
 	github.com/cockroachdb/errors v1.11.3
-	github.com/go-git/go-git/v5 v5.12.0
+	github.com/go-git/go-git/v5 v5.13.0
 	github.com/google/fhir/go v0.7.5-0.20250925033537-1f5b5b9427ff
 	github.com/google/uuid v1.6.0
 	github.com/hashicorp/go-multierror v1.1.1

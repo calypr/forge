@@ -12,7 +12,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/calypr/data-client/indexd/drs"
+	"github.com/calypr/data-client/drs"
 	"github.com/calypr/git-drs/config"
 	"github.com/calypr/git-drs/drslog"
 	fver "github.com/google/fhir/go/fhirversion"
