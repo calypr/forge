@@ -66,7 +66,7 @@ func extractReferenceString(ref *dtpb.Reference) (string, error) {
 // EnsureDirectoryPathExists recursively checks and creates all parent directories
 // for a given POSIX path (e.g., "/a/b/c"). It returns the Directory
 // object for the target path.
-func EnsureDirectoryPathExists(endpoint string, posixPath string) *Directory {
+func EnsureDirectoryPathExists(endpoint string, project string, posixPath string) *Directory {
 	// Clean and normalize the path to standard POSIX separators (/)
 	cleanPath := filepath.Clean(posixPath)
 	// Use the clean path as the unique key in our cache.
@@ -74,26 +74,27 @@ func EnsureDirectoryPathExists(endpoint string, posixPath string) *Directory {
 		cleanPath = "/"
 	}
 
+	cacheKey := project + ":" + cleanPath
 	// If the directory already exists in our cache, return it
-	if dir, ok := DirectoryCache[cleanPath]; ok {
+	if dir, ok := DirectoryCache[cacheKey]; ok {
 		return dir
 	}
 
-	dirUUID := uuid.NewSHA1(uuid.NewSHA1(uuid.NameSpaceDNS, []byte(endpoint)), []byte(cleanPath)).String()
+	dirUUID := uuid.NewSHA1(uuid.NewSHA1(uuid.NameSpaceDNS, []byte(endpoint)), []byte(project+cleanPath)).String()
 	// Base case: Handle the root path "/"
 	if cleanPath == "/" {
-		DirectoryCache[cleanPath] = &Directory{
+		DirectoryCache[cacheKey] = &Directory{
 			Name:         "/",
 			Id:           dirUUID,
 			ResourceType: DIRECTORY_RESOURCE,
 		}
-		return DirectoryCache[cleanPath]
+		return DirectoryCache[cacheKey]
 	}
 
 	// Determine the parent path and recursively ensure it exists
 	dirName := filepath.Base(cleanPath)
 	parentPath := filepath.Dir(cleanPath)
-	parentDir := EnsureDirectoryPathExists(endpoint, parentPath)
+	parentDir := EnsureDirectoryPathExists(endpoint, project, parentPath)
 
 	// Create the current Directory object with its deterministic UUID
 	currentDir := &Directory{
@@ -103,7 +104,7 @@ func EnsureDirectoryPathExists(endpoint string, posixPath string) *Directory {
 	}
 
 	// Add the new directory to the cache
-	DirectoryCache[cleanPath] = currentDir
+	DirectoryCache[cacheKey] = currentDir
 
 	// Link the current directory to its parent
 	if parentDir != nil {
@@ -114,7 +115,7 @@ func EnsureDirectoryPathExists(endpoint string, posixPath string) *Directory {
 		isAlreadyLinked := false
 		for _, link := range parentDir.Child {
 			refStr, _ := extractReferenceString(link)
-			if refStr == dirUUID {
+			if refStr == DIR_ID_PREFIX+dirUUID {
 				isAlreadyLinked = true
 				break
 			}
@@ -130,7 +131,7 @@ func EnsureDirectoryPathExists(endpoint string, posixPath string) *Directory {
 
 // BuildDirectoryTreeFromDocRef extracts the path from a DocumentReference and builds the tree.
 // It ensures all necessary Directory nodes are created and linked in the global DirectoryCache.
-func BuildDirectoryTreeFromDocRef(endpoint string, docRef *drpb.DocumentReference) {
+func BuildDirectoryTreeFromDocRef(endpoint string, project string, docRef *drpb.DocumentReference) {
 	if len(docRef.Content) == 0 || docRef.Content[0].GetAttachment().GetUrl().GetValue() == "" {
 		log.Println("DocumentReference missing URL attachment.")
 		return
@@ -147,7 +148,7 @@ func BuildDirectoryTreeFromDocRef(endpoint string, docRef *drpb.DocumentReferenc
 	dirPath := filepath.Dir(posixPath)
 
 	// Recursively create all directories up to the file's parent
-	parentDir := EnsureDirectoryPathExists(endpoint, dirPath)
+	parentDir := EnsureDirectoryPathExists(endpoint, project, dirPath)
 
 	if parentDir != nil {
 		docRefID := docRef.GetId().GetValue()

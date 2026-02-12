@@ -57,6 +57,8 @@ type MetaStructure struct {
 }
 
 func CreateMeta(outPath string, remote config.Remote) error {
+	// Reset the global cache to ensure a clean state for this run
+	DirectoryCache = make(map[string]*Directory)
 	var rsID string
 	var err error
 	cfg, err := config.LoadConfig()
@@ -120,19 +122,20 @@ func CreateMeta(outPath string, remote config.Remote) error {
 }
 
 // getOrCreateRootDirectory ensures the root directory ("/") exists in DirectoryCache
-func getOrCreateRootDirectory(endpoint string) *Directory {
+func getOrCreateRootDirectory(endpoint string, project string) *Directory {
 	cleanPath := "/"
-	if dir, ok := DirectoryCache[cleanPath]; ok {
+	cacheKey := project + ":" + cleanPath
+	if dir, ok := DirectoryCache[cacheKey]; ok {
 		return dir
 	}
-	dirUUID := uuid.NewSHA1(uuid.NewSHA1(uuid.NameSpaceDNS, []byte(endpoint)), []byte(cleanPath)).String()
+	dirUUID := uuid.NewSHA1(uuid.NewSHA1(uuid.NameSpaceDNS, []byte(endpoint)), []byte(project+cleanPath)).String()
 	newDir := &Directory{
 		Name:         "/",
 		Id:           dirUUID,
 		ResourceType: DIRECTORY_RESOURCE,
 		Child:        []*dtpb.Reference{},
 	}
-	DirectoryCache[cleanPath] = newDir
+	DirectoryCache[cacheKey] = newDir
 	return newDir
 }
 
@@ -184,7 +187,7 @@ func getResearchStudy(fhirDirectory string, projectId string, endpoint string, m
 			if err2 := json.Unmarshal(unmarshalBytes, &tmp); err2 == nil {
 				if idv, ok := tmp["id"].(string); ok && idv != "" {
 					// we have an ID but couldn't unmarshal via fhir unmarshaller; still inject rootDir
-					rootDir := getOrCreateRootDirectory(endpoint)
+					rootDir := getOrCreateRootDirectory(endpoint, projectId)
 					newBytes, injErr := injectRootDir(unmarshalBytes, "Directory/"+rootDir.Id)
 					if injErr != nil {
 						return "", injErr
@@ -202,7 +205,7 @@ func getResearchStudy(fhirDirectory string, projectId string, endpoint string, m
 		fmt.Printf("Loaded existing ResearchStudy from %s with ID %s\n", rsPath, rsID)
 
 		// inject or update rootDir in the existing JSON and write back
-		rootDir := getOrCreateRootDirectory(endpoint)
+		rootDir := getOrCreateRootDirectory(endpoint, projectId)
 		newFirstLineBytes, err := injectRootDir(unmarshalBytes, "Directory/"+rootDir.Id)
 		if err != nil {
 			return "", fmt.Errorf("failed to inject rootDir into existing ResearchStudy: %v", err)
@@ -222,7 +225,7 @@ func getResearchStudy(fhirDirectory string, projectId string, endpoint string, m
 	id := createIDFromStrings(endpoint, RESEARCH_STUDY, projectId)
 
 	// Ensure root directory exists
-	rootDir := getOrCreateRootDirectory(endpoint)
+	rootDir := getOrCreateRootDirectory(endpoint, projectId)
 
 	rs := &rspb.ResearchStudy{
 		Id: &dtpb.Id{Value: id},
@@ -371,7 +374,7 @@ func processDRSRecordsAndUpdateFHIR(drsRecords []*drs.DRSObject, LfsRecords []LF
 		fhirRecord := containedResource.GetDocumentReference()
 		recordID := fhirRecord.GetId().GetValue()
 
-		BuildDirectoryTreeFromDocRef(endpoint, fhirRecord)
+		BuildDirectoryTreeFromDocRef(endpoint, project, fhirRecord)
 		if existing := existingFHIRRecords[recordID].GetDocumentReference(); existing != nil {
 			existing.Status = fhirRecord.Status
 			existing.DocStatus = fhirRecord.DocStatus

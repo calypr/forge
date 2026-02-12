@@ -20,7 +20,7 @@ func TestEnsureDirectoryPathExists(t *testing.T) {
 
 	t.Run("Root", func(t *testing.T) {
 		resetCache()
-		dir := EnsureDirectoryPathExists(endpoint, "/")
+		dir := EnsureDirectoryPathExists(endpoint, "test-project", "/")
 		if dir.Name != "/" {
 			t.Errorf("expected /, got %s", dir.Name)
 		}
@@ -31,7 +31,7 @@ func TestEnsureDirectoryPathExists(t *testing.T) {
 
 	t.Run("Nested", func(t *testing.T) {
 		resetCache()
-		dir := EnsureDirectoryPathExists(endpoint, "/a/b/c")
+		dir := EnsureDirectoryPathExists(endpoint, "test-project", "/a/b/c")
 		if dir.Name != "c" {
 			t.Errorf("expected c, got %s", dir.Name)
 		}
@@ -41,7 +41,7 @@ func TestEnsureDirectoryPathExists(t *testing.T) {
 		}
 
 		// Verify parent pointers
-		parentB := DirectoryCache["/a/b"]
+		parentB := DirectoryCache["test-project:/a/b"]
 		foundC := false
 		for _, child := range parentB.Child {
 			if strings.Contains(child.GetResourceId().Value, dir.Id) {
@@ -70,10 +70,10 @@ func TestBuildDirectoryTreeFromDocRef(t *testing.T) {
 		},
 	}
 
-	BuildDirectoryTreeFromDocRef(endpoint, docRef)
+	BuildDirectoryTreeFromDocRef(endpoint, "test-project", docRef)
 
 	// Path /data should exist
-	dir, ok := DirectoryCache["/data"]
+	dir, ok := DirectoryCache["test-project:/data"]
 	if !ok {
 		t.Fatal("/data not found in cache")
 	}
@@ -126,5 +126,32 @@ func TestDirectoryMarshalJSON(t *testing.T) {
 	child := children[0].(map[string]any)
 	if child["reference"] != "DocumentReference/doc-1" {
 		t.Errorf("expected DocumentReference/doc-1, got %v", child["reference"])
+	}
+}
+
+func TestDirectoryProjectIsolation(t *testing.T) {
+	resetCache()
+	endpoint := "localhost"
+	path := "/shared/data"
+
+	// Project A
+	dirA := EnsureDirectoryPathExists(endpoint, "project-A", path)
+	// Project B
+	dirB := EnsureDirectoryPathExists(endpoint, "project-B", path)
+
+	if dirA.Id == dirB.Id {
+		t.Errorf("expected different IDs for different projects, but both got %s", dirA.Id)
+	}
+
+	if len(DirectoryCache) != 6 { // Root, shared, data for each project = 3 * 2
+		t.Errorf("expected 6 entries in cache (3 per project), got %d", len(DirectoryCache))
+	}
+
+	// Verify they are both in the cache under their respective keys
+	if _, ok := DirectoryCache["project-A:/shared/data"]; !ok {
+		t.Error("project-A path missing from cache")
+	}
+	if _, ok := DirectoryCache["project-B:/shared/data"]; !ok {
+		t.Error("project-B path missing from cache")
 	}
 }
