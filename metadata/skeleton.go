@@ -19,6 +19,9 @@ const (
 	DOCUMENT_RESOURCE         = "DocumentReference"
 	DIRECTORY_RESOURCE        = "Directory"
 	DIR_ID_PREFIX             = DIRECTORY_RESOURCE + "/"
+	SOURCE_EXTENSION_URL      = "/fhir/StructureDefinition/source"
+	GITHUB_SOURCE             = "github"
+	S3_SOURCE                 = "s3"
 )
 
 func CreateDocReferenceReference(resourceId string) *dtpb.Reference {
@@ -66,6 +69,13 @@ func templateDocRef(obj *drs.DRSObject, endpoint string, project string, rSID st
 		})
 	}
 
+	extensions = append(extensions, &dtpb.Extension{
+		Url: &dtpb.Uri{Value: endpoint + SOURCE_EXTENSION_URL},
+		Value: &dtpb.Extension_ValueX{
+			Choice: &dtpb.Extension_ValueX_StringValue{StringValue: &dtpb.String{Value: S3_SOURCE}},
+		},
+	})
+
 	var url *dtpb.Url
 	if len(obj.AccessMethods) > 0 {
 		// TODO: Big assumption here assuming that there exists only one url per FHIR attachment
@@ -92,6 +102,60 @@ func templateDocRef(obj *drs.DRSObject, endpoint string, project string, rSID st
 					Title:     &dtpb.String{Value: obj.Name},
 					Extension: extensions,
 					Url:       url,
+				},
+			},
+		},
+		Subject: &dtpb.Reference{
+			Reference: &dtpb.Reference_ResearchStudyId{
+				ResearchStudyId: &dtpb.ReferenceId{
+					Value: rSID,
+				},
+			},
+		},
+	}
+
+	return &cprb.ContainedResource{
+		OneofResource: &cprb.ContainedResource_DocumentReference{
+			DocumentReference: dr,
+		},
+	}
+}
+
+func templateGitHubDocRef(name string, size int64, endpoint string, project string, rSID string, githubURL string, commitHash string) *cprb.ContainedResource {
+	id := uuid.NewSHA1(
+		uuid.NewSHA1(uuid.NameSpaceDNS, []byte(endpoint)),
+		fmt.Appendf(nil, "%s/%s", project, name),
+	).String()
+
+	var extensions []*dtpb.Extension
+	extensions = append(extensions, &dtpb.Extension{
+		Url: &dtpb.Uri{Value: endpoint + SOURCE_EXTENSION_URL},
+		Value: &dtpb.Extension_ValueX{
+			Choice: &dtpb.Extension_ValueX_StringValue{StringValue: &dtpb.String{Value: GITHUB_SOURCE}},
+		},
+	})
+
+	// Construct GitHub RAW URL
+	rawURL := fmt.Sprintf("https://%s/raw/%s/%s", strings.TrimSuffix(githubURL, ".git"), commitHash, name)
+
+	dr := &drpb.DocumentReference{
+		Id:        &dtpb.Id{Value: id},
+		Status:    &drpb.DocumentReference_StatusCode{Value: code.DocumentReferenceStatusCode_CURRENT},
+		DocStatus: &drpb.DocumentReference_DocStatusCode{Value: code.CompositionStatusCode_FINAL},
+		Identifier: []*dtpb.Identifier{
+			{
+				Use:    &dtpb.Identifier_UseCode{Value: code.IdentifierUseCode_OFFICIAL},
+				System: &dtpb.Uri{Value: "http://" + endpoint + "/" + project},
+				Value:  &dtpb.String{Value: name},
+			},
+		},
+		Content: []*drpb.DocumentReference_Content{
+			{
+				Attachment: &dtpb.Attachment{
+					Size:      &dtpb.Integer64{Value: size},
+					Title:     &dtpb.String{Value: name},
+					Extension: extensions,
+					Url:       &dtpb.Url{Value: rawURL},
 				},
 			},
 		},

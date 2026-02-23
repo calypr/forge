@@ -12,7 +12,11 @@ import (
 	"path/filepath"
 	"time"
 
+	"strconv"
+	"strings"
+
 	"github.com/calypr/data-client/drs"
+	"github.com/calypr/forge/utils/gitutil"
 	"github.com/calypr/git-drs/config"
 	"github.com/calypr/git-drs/drslog"
 	fver "github.com/google/fhir/go/fhirversion"
@@ -101,11 +105,15 @@ func CreateMeta(outPath string, remote config.Remote) error {
 	}
 
 	collectRecs := []*drs.DRSObject{}
-	for rec := range recs {
-		if rec.Error != nil {
-			return fmt.Errorf("error from record channel: %v", rec.Error)
+	for res := range recs {
+		if res.Error != nil {
+			// Log the error but continue to process what we have, unless it's a critical non-cancellation error
+			logger.Debug(fmt.Sprintf("Note: result channel error: %v", res.Error))
+			continue
 		}
-		collectRecs = append(collectRecs, rec.Object)
+		if res.Object != nil {
+			collectRecs = append(collectRecs, res.Object)
+		}
 	}
 
 	LFSRecords, err := findLFSRecords()
@@ -113,8 +121,30 @@ func CreateMeta(outPath string, remote config.Remote) error {
 		return err
 	}
 
+	gitRecords, err := findGitFiles()
+	if err != nil {
+		// If we are not in a git repo, just continue with empty git records
+		gitRecords = []LFSRecord{}
+	}
+
+	repo, err := gitutil.OpenRepository(".")
+	var githubURL, commitHash string
+	if err == nil {
+		hash, err := gitutil.GetLastLocalCommit(repo)
+		if err == nil {
+			commitHash = hash.String()
+		}
+		remote, err := repo.Remote("origin")
+		if err == nil {
+			urls := remote.Config().URLs
+			if len(urls) > 0 {
+				githubURL, _ = gitutil.TrimGitURLPrefix(urls[0])
+			}
+		}
+	}
+
 	// Now that we have a channel, we can pass it directly to the merging function
-	if err := processDRSRecordsAndUpdateFHIR(collectRecs, LFSRecords, outPath, sc.GetGen3Interface().GetCredential().APIEndpoint, sc.GetProjectId(), rsID); err != nil {
+	if err := processDRSRecordsAndUpdateFHIR(collectRecs, LFSRecords, gitRecords, outPath, sc.GetGen3Interface().GetCredential().APIEndpoint, sc.GetProjectId(), rsID, githubURL, commitHash); err != nil {
 		return fmt.Errorf("failed to process DRS records: %v", err)
 	}
 
@@ -302,11 +332,46 @@ func findLFSRecords() ([]LFSRecord, error) {
 	return records.Files, nil
 }
 
+// findGitFiles runs git ls-tree and collects the results into struct
+func findGitFiles() ([]LFSRecord, error) {
+	output, err := exec.Command("git", "ls-tree", "-r", "-l", "HEAD").Output()
+	if err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			return nil, fmt.Errorf("command execution failed: %w\nstderr: %s", err, exitErr.Stderr)
+		}
+		return nil, fmt.Errorf("failed to run git ls-tree command: %w", err)
+	}
+	var records []LFSRecord
+	scanner := bufio.NewScanner(bytes.NewReader(output))
+	for scanner.Scan() {
+		line := scanner.Text()
+		parts := strings.SplitN(line, "\t", 2)
+		if len(parts) < 2 {
+			continue
+		}
+		meta := parts[0]
+		path := parts[1]
+		metaParts := strings.Fields(meta)
+		if len(metaParts) < 4 {
+			continue
+		}
+		size, _ := strconv.ParseInt(metaParts[3], 10, 64)
+		records = append(records, LFSRecord{
+			Name: path,
+			Size: size,
+		})
+	}
+	return records, nil
+}
+
 // processDRSRecordsAndUpdateFHIR processes DRS records and updates FHIR NDJSON files with UPSERT operation.
-func processDRSRecordsAndUpdateFHIR(drsRecords []*drs.DRSObject, LfsRecords []LFSRecord, fhirDirectory string, endpoint string, project string, researchStudyID string) error {
+func processDRSRecordsAndUpdateFHIR(drsRecords []*drs.DRSObject, LfsRecords []LFSRecord, gitRecords []LFSRecord, fhirDirectory string, endpoint string, project string, researchStudyID string, githubURL string, commitHash string) error {
 	docRefFP := filepath.Join(fhirDirectory, DOCUMENT_RESOURCE+NDJSON_EXT)
 	dirRefFP := filepath.Join(fhirDirectory, DIRECTORY_RESOURCE+NDJSON_EXT) // New Directory file path
 	existingFHIRRecords := make(map[string]*cprb.ContainedResource)
+
+	processedPaths := make(map[string]bool)
+	matchedDrsOids := make(map[string]bool)
 
 	marshaller, err := jsonformat.NewMarshaller(false, "", "", fver.R5)
 	if err != nil {
@@ -360,6 +425,8 @@ func processDRSRecordsAndUpdateFHIR(drsRecords []*drs.DRSObject, LfsRecords []LF
 				drsRecord.Name = rec.Name
 				foundMatch = true
 				containedResource = templateDocRef(drsRecord, endpoint, project, researchStudyID)
+				processedPaths[rec.Name] = true
+				matchedDrsOids[drsRecord.Checksums.SHA256] = true
 			}
 
 			if foundMatch {
@@ -397,7 +464,78 @@ func processDRSRecordsAndUpdateFHIR(drsRecords []*drs.DRSObject, LfsRecords []LF
 		}
 	}
 
-	log.Printf("Processed %d records", count)
+	for _, rec := range gitRecords {
+		if processedPaths[rec.Name] {
+			continue // Already handled by LFS/DRS matching
+		}
+		// Also check if it's an LFS file (even if no DRS match)
+		isLFS := false
+		for _, lfs := range LfsRecords {
+			if lfs.Name == rec.Name {
+				isLFS = true
+				break
+			}
+		}
+		if isLFS {
+			continue // Skip LFS files that didn't match DRS records
+		}
+
+		if githubURL != "" && commitHash != "" {
+			containedResource := templateGitHubDocRef(rec.Name, rec.Size, endpoint, project, researchStudyID, githubURL, commitHash)
+			fhirRecord := containedResource.GetDocumentReference()
+			recordID := fhirRecord.GetId().GetValue()
+
+			BuildDirectoryTreeFromDocRef(endpoint, project, fhirRecord)
+			if existing := existingFHIRRecords[recordID].GetDocumentReference(); existing != nil {
+				existing.Status = fhirRecord.Status
+				existing.DocStatus = fhirRecord.DocStatus
+				existing.Date = fhirRecord.Date
+				existing.Identifier = fhirRecord.Identifier
+				if existing.Content != nil && fhirRecord.Content != nil && len(existing.Content) > 0 && len(fhirRecord.Content) > 0 {
+					existingAttachment := existing.Content[0].GetAttachment()
+					newAttachment := fhirRecord.Content[0].GetAttachment()
+					existingAttachment.Creation = newAttachment.Creation
+					existingAttachment.Size = newAttachment.Size
+					existingAttachment.Title = newAttachment.Title
+					existingAttachment.Extension = newAttachment.Extension
+					existingAttachment.Url = newAttachment.Url
+				} else {
+					existing.Content = fhirRecord.Content
+				}
+				existing.Subject = fhirRecord.Subject
+			} else {
+				existingFHIRRecords[recordID] = containedResource
+			}
+			count++
+		}
+	}
+
+	// Finally, add any DRS records that haven't been processed yet (remote-only records)
+	remoteOnlyCount := 0
+	for _, drsRecord := range drsRecords {
+		if matchedDrsOids[drsRecord.Checksums.SHA256] {
+			continue
+		}
+
+		// This record exists on the server but was not matched to a local file
+		containedResource := templateDocRef(drsRecord, endpoint, project, researchStudyID)
+		fhirRecord := containedResource.GetDocumentReference()
+		recordID := fhirRecord.GetId().GetValue()
+
+		BuildDirectoryTreeFromDocRef(endpoint, project, fhirRecord)
+		if _, exists := existingFHIRRecords[recordID]; !exists {
+			existingFHIRRecords[recordID] = containedResource
+			count++
+			remoteOnlyCount++
+		}
+	}
+
+	if count == 0 {
+		log.Printf("WARNING: Processed 0 records. This means no matches were found between DRS objects on remote and local LFS files, and no remote objects were found for project '%s'.", project)
+		log.Printf("Verify that project ID '%s' is correct and that files are indexed on the remote DRS server '%s'.", project, endpoint)
+	} else {
+		log.Printf("Processed %d records (%d remote-only)", count, remoteOnlyCount)
+	}
 
 	docRefFile, err := os.Create(docRefFP)
 	if err != nil {

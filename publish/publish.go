@@ -55,7 +55,7 @@ func RunPublish(token string, profile config.Remote) (*sower.StatusResp, error) 
 		return nil, err
 	}
 	// NOTE: hardcode to retrieve from git remote "origin"
-	remote, err := repo.Remote("origin")
+	remote, err := repo.Remote(string(profile))
 	if err != nil {
 		return nil, fmt.Errorf("failed to get 'origin' remote: %w", err)
 	}
@@ -79,11 +79,39 @@ func RunPublish(token string, profile config.Remote) (*sower.StatusResp, error) 
 	if err != nil {
 		return nil, err
 	}
-	sc, closer, err := client.NewGen3Client(profile, g3client.WithClients(g3client.SowerClient, g3client.FenceClient))
+	sc, closer, err := client.NewGen3Client(profile, g3client.WithClients(g3client.SowerClient, g3client.FenceClient, g3client.IndexdClient))
 	if err != nil {
 		return nil, err
 	}
 	defer closer()
+
+	// Check if any objects are indexed for this project on the remote
+	// We use a short-lived context for the check but avoid immediate manual cancellation
+	// to reduce noise in data-client logs while ensuring cleanup via defer.
+	checkCtx, checkCancel := context.WithCancel(context.Background())
+	defer checkCancel()
+	recs, err := sc.ListObjectsByProject(checkCtx, sc.GetProjectId())
+	if err == nil {
+		hasRemoteRecords := false
+		for res := range recs {
+			if res.Error != nil {
+				// If it's not a cancellation error, it's a real issue (e.g. 401 Unauthorized)
+				if checkCtx.Err() == nil {
+					fmt.Printf("\nDEBUG: Error checking for remote records: %v\n", res.Error)
+				}
+				continue
+			}
+			if res.Object != nil {
+				hasRemoteRecords = true
+				break
+			}
+		}
+
+		if !hasRemoteRecords {
+			fmt.Printf("\nWARNING: No files are indexed for project '%s' on remote '%s'.\n", sc.GetProjectId(), sc.GetGen3Interface().GetCredential().APIEndpoint)
+			fmt.Println("The publish job likely won't produce any file related results. Metadata only projects will still be published. Use git-drs to upload and index files first if you intend on viewing metadata for existing files")
+		}
+	}
 
 	dispatchArgs := &sower.DispatchArgs{
 		BucketName:     sc.GetBucketName(),
