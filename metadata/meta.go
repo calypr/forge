@@ -12,13 +12,12 @@ import (
 	"path/filepath"
 	"time"
 
-	"strconv"
-	"strings"
-
 	"github.com/calypr/data-client/drs"
 	"github.com/calypr/forge/utils/gitutil"
 	"github.com/calypr/git-drs/config"
 	"github.com/calypr/git-drs/drslog"
+	"github.com/go-git/go-git/v5"
+	"github.com/go-git/go-git/v5/plumbing/object"
 	fver "github.com/google/fhir/go/fhirversion"
 	"github.com/google/fhir/go/jsonformat"
 	code "github.com/google/fhir/go/proto/google/fhir/proto/r5/core/codes_go_proto"
@@ -121,25 +120,27 @@ func CreateMeta(outPath string, remote config.Remote) error {
 		return err
 	}
 
-	gitRecords, err := findGitFiles()
-	if err != nil {
-		// If we are not in a git repo, just continue with empty git records
-		gitRecords = []LFSRecord{}
-	}
-
+	var gitRecords []LFSRecord
 	repo, err := gitutil.OpenRepository(".")
+	if err != nil {
+		return fmt.Errorf("failed to open repository: %v", err)
+	}
+	gitRecords, err = findGitFiles(repo)
+
 	var githubURL, commitHash string
+	hash, err := gitutil.GetLastLocalCommit(repo)
 	if err == nil {
-		hash, err := gitutil.GetLastLocalCommit(repo)
-		if err == nil {
-			commitHash = hash.String()
-		}
-		remote, err := repo.Remote("origin")
-		if err == nil {
-			urls := remote.Config().URLs
-			if len(urls) > 0 {
-				githubURL, _ = gitutil.TrimGitURLPrefix(urls[0])
-			}
+		commitHash = hash.String()
+	}
+	repoRemote, err := repo.Remote(string(remote))
+	if err != nil {
+		return fmt.Errorf("failed to get remote: %v", err)
+	}
+	urls := repoRemote.Config().URLs
+	if len(urls) > 0 {
+		githubURL, err = gitutil.TrimGitURLPrefix(urls[0])
+		if err != nil {
+			return fmt.Errorf("failed to trim git URL prefix: %v", err)
 		}
 	}
 
@@ -333,35 +334,37 @@ func findLFSRecords() ([]LFSRecord, error) {
 }
 
 // findGitFiles runs git ls-tree and collects the results into struct
-func findGitFiles() ([]LFSRecord, error) {
-	output, err := exec.Command("git", "ls-tree", "-r", "-l", "HEAD").Output()
-	if err != nil {
-		if exitErr, ok := err.(*exec.ExitError); ok {
-			return nil, fmt.Errorf("command execution failed: %w\nstderr: %s", err, exitErr.Stderr)
-		}
-		return nil, fmt.Errorf("failed to run git ls-tree command: %w", err)
-	}
+func findGitFiles(repo *git.Repository) ([]LFSRecord, error) {
 	var records []LFSRecord
-	scanner := bufio.NewScanner(bytes.NewReader(output))
-	for scanner.Scan() {
-		line := scanner.Text()
-		parts := strings.SplitN(line, "\t", 2)
-		if len(parts) < 2 {
-			continue
-		}
-		meta := parts[0]
-		path := parts[1]
-		metaParts := strings.Fields(meta)
-		if len(metaParts) < 4 {
-			continue
-		}
-		size, _ := strconv.ParseInt(metaParts[3], 10, 64)
-		records = append(records, LFSRecord{
-			Name: path,
-			Size: size,
-		})
+
+	// Get the HEAD reference
+	ref, err := repo.Head()
+	if err != nil {
+		return nil, err
 	}
-	return records, nil
+
+	// Get the commit object
+	commit, err := repo.CommitObject(ref.Hash())
+	if err != nil {
+		return nil, err
+	}
+
+	// Get the tree from the commit
+	tree, err := commit.Tree()
+	if err != nil {
+		return nil, err
+	}
+
+	// Walk() is the direct replacement for 'ls-tree -r'
+	err = tree.Files().ForEach(func(f *object.File) error {
+		records = append(records, LFSRecord{
+			Name: f.Name,
+			Size: f.Size,
+		})
+		return nil
+	})
+
+	return records, err
 }
 
 // processDRSRecordsAndUpdateFHIR processes DRS records and updates FHIR NDJSON files with UPSERT operation.
