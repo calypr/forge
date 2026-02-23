@@ -135,8 +135,11 @@ func templateGitHubDocRef(name string, size int64, endpoint string, project stri
 		},
 	})
 
-	// Construct GitHub RAW URL
-	rawURL := fmt.Sprintf("https://%s/raw/%s/%s", strings.TrimSuffix(githubURL, ".git"), commitHash, name)
+	// Construct repository link
+	// We use the /blob/<commit>/<file> format to link to the file in the web UI.
+	// This avoids exposing raw tokens in URLs and relies on the user's browser session for auth.
+	cleanURL := strings.TrimSuffix(githubURL, ".git")
+	fileURL := fmt.Sprintf("https://%s/blob/%s/%s", cleanURL, commitHash, name)
 
 	dr := &drpb.DocumentReference{
 		Id:        &dtpb.Id{Value: id},
@@ -155,7 +158,7 @@ func templateGitHubDocRef(name string, size int64, endpoint string, project stri
 					Size:      &dtpb.Integer64{Value: size},
 					Title:     &dtpb.String{Value: name},
 					Extension: extensions,
-					Url:       &dtpb.Url{Value: rawURL},
+					Url:       &dtpb.Url{Value: fileURL},
 				},
 			},
 		},

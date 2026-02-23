@@ -47,20 +47,38 @@ func GetGlobalUserIdentity() (string, error) {
 // This is useful for converting SSH-style URLs (git@host:repo.git) into
 // a format that can be used with HTTPS authentication.
 func TrimGitURLPrefix(rawURL string) (string, error) {
-	// Trim the https:// prefix
-	const httpsPrefix = "https://"
-	if strings.HasPrefix(rawURL, httpsPrefix) {
-		trimmedURL := strings.TrimPrefix(rawURL, httpsPrefix)
-		return strings.Replace(trimmedURL, ":", "/", 1), nil
+	trimmedURL := rawURL
+
+	// 1. Strip protocol if present (http, https, git, ssh)
+	prefixes := []string{"https://", "http://", "git://", "ssh://"}
+	for _, prefix := range prefixes {
+		if strings.HasPrefix(trimmedURL, prefix) {
+			trimmedURL = strings.TrimPrefix(trimmedURL, prefix)
+			break
+		}
 	}
 
-	// Trim the git@ prefix
-	const sshPrefix = "git@"
-	if strings.HasPrefix(rawURL, sshPrefix) {
-		trimmedURL := strings.TrimPrefix(rawURL, sshPrefix)
-		return strings.Replace(trimmedURL, ":", "/", 1), nil
+	// 2. Strip user info if present (anything before the LAST @)
+	// This handles standard "user:pass@host" and custom "user/token@host"
+	if idx := strings.LastIndex(trimmedURL, "@"); idx != -1 {
+		trimmedURL = trimmedURL[idx+1:]
 	}
 
-	// If no recognized prefix is found, return an error.
-	return rawURL, fmt.Errorf("Expecting either https:// prefix or ssh prefix (git@) but got %s instead", rawURL)
+	// 3. Handle SSH-style "host:path/to/repo" by converting to "host/path/to/repo"
+	// Only replace the FIRST colon (which separates host from path).
+	// We don't want to replace all colons if there's a port or something else,
+	// but for git remotes, the first colon is typically the host/path separator.
+	trimmedURL = strings.Replace(trimmedURL, ":", "/", 1)
+
+	// 4. Clean up trailing .git suffix
+	trimmedURL = strings.TrimSuffix(trimmedURL, ".git")
+
+	// 5. Trim trailing slash if present
+	trimmedURL = strings.TrimSuffix(trimmedURL, "/")
+
+	if trimmedURL == "" {
+		return "", fmt.Errorf("resultant URL after trimming is empty for input: %s", rawURL)
+	}
+
+	return trimmedURL, nil
 }

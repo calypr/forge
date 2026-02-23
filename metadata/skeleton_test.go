@@ -151,3 +151,36 @@ func TestTemplateDocRef(t *testing.T) {
 		t.Errorf("expected subject rs-1, got %s", dr.Subject.GetResearchStudyId().Value)
 	}
 }
+
+func TestTemplateGitHubDocRef(t *testing.T) {
+	name := "README.md"
+	size := int64(500)
+	endpoint := "localhost"
+	project := "test-proj"
+	rsID := "rs-1"
+	githubURL := "github.com/user/repo"
+	commitHash := "abcd123"
+
+	res := templateGitHubDocRef(name, size, endpoint, project, rsID, githubURL, commitHash)
+	dr := res.GetDocumentReference()
+
+	if dr == nil {
+		t.Fatal("expected DocumentReference")
+	}
+
+	expectedURL := "https://github.com/user/repo/blob/abcd123/README.md"
+	gotURL := dr.Content[0].Attachment.Url.Value
+	if gotURL != expectedURL {
+		t.Errorf("expected URL %s, got %s", expectedURL, gotURL)
+	}
+
+	// Test non-github URL
+	githubURL2 := "source.ohsu.edu/user/repo"
+	res2 := templateGitHubDocRef(name, size, endpoint, project, rsID, githubURL2, commitHash)
+	dr2 := res2.GetDocumentReference()
+	expectedURL2 := "https://source.ohsu.edu/user/repo/blob/abcd123/README.md"
+	gotURL2 := dr2.Content[0].Attachment.Url.Value
+	if gotURL2 != expectedURL2 {
+		t.Errorf("expected URL %s, got %s", expectedURL2, gotURL2)
+	}
+}
