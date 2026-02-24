@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/calypr/data-client/drs"
@@ -23,6 +24,7 @@ import (
 	code "github.com/google/fhir/go/proto/google/fhir/proto/r5/core/codes_go_proto"
 	dtpb "github.com/google/fhir/go/proto/google/fhir/proto/r5/core/datatypes_go_proto"
 	cprb "github.com/google/fhir/go/proto/google/fhir/proto/r5/core/resources/bundle_and_contained_resource_go_proto"
+	drpb "github.com/google/fhir/go/proto/google/fhir/proto/r5/core/resources/document_reference_go_proto"
 	rspb "github.com/google/fhir/go/proto/google/fhir/proto/r5/core/resources/research_study_go_proto"
 	"github.com/google/uuid"
 )
@@ -60,8 +62,6 @@ type MetaStructure struct {
 }
 
 func CreateMeta(outPath string, remote config.Remote) error {
-	// Reset the global cache to ensure a clean state for this run
-	DirectoryCache = make(map[string]*Directory)
 	var rsID string
 	var err error
 	cfg, err := config.LoadConfig()
@@ -77,6 +77,12 @@ func CreateMeta(outPath string, remote config.Remote) error {
 	sc, err := cfg.GetRemoteClient(remote, logger)
 	if err != nil {
 		return err
+	}
+
+	// Load existing directories and DocumentReferences if they exist
+	dirRefFP := filepath.Join(outPath, DIRECTORY_RESOURCE+NDJSON_EXT)
+	if err := LoadDirectories(dirRefFP, sc.GetProjectId()); err != nil {
+		logger.Debug(fmt.Sprintf("Warning: could not load existing directories: %v", err))
 	}
 
 	marshaller, err := jsonformat.NewMarshaller(false, "", "", fver.R5)
@@ -370,8 +376,11 @@ func findGitFiles(repo *git.Repository) ([]LFSRecord, error) {
 // processDRSRecordsAndUpdateFHIR processes DRS records and updates FHIR NDJSON files with UPSERT operation.
 func processDRSRecordsAndUpdateFHIR(drsRecords []*drs.DRSObject, LfsRecords []LFSRecord, gitRecords []LFSRecord, fhirDirectory string, endpoint string, project string, researchStudyID string, githubURL string, commitHash string) error {
 	docRefFP := filepath.Join(fhirDirectory, DOCUMENT_RESOURCE+NDJSON_EXT)
-	dirRefFP := filepath.Join(fhirDirectory, DIRECTORY_RESOURCE+NDJSON_EXT) // New Directory file path
 	existingFHIRRecords := make(map[string]*cprb.ContainedResource)
+
+	// Maps for matching
+	existingByPath := make(map[string]*cprb.ContainedResource)
+	existingBySHA256 := make(map[string]*cprb.ContainedResource)
 
 	processedPaths := make(map[string]bool)
 	matchedDrsOids := make(map[string]bool)
@@ -410,7 +419,24 @@ func processDRSRecordsAndUpdateFHIR(drsRecords []*drs.DRSObject, LfsRecords []LF
 				}
 				docRef := dr.GetDocumentReference()
 				if docRef != nil {
-					existingFHIRRecords[docRef.GetId().Value] = dr
+					id := docRef.GetId().Value
+					existingFHIRRecords[id] = dr
+
+					// Populate matching maps
+					if len(docRef.Content) > 0 && docRef.Content[0].GetAttachment() != nil {
+						path := docRef.Content[0].GetAttachment().GetTitle().GetValue()
+						if path != "" {
+							existingByPath[path] = dr
+						}
+
+						for _, ext := range docRef.Content[0].GetAttachment().GetExtension() {
+							if strings.HasSuffix(ext.GetUrl().GetValue(), "/checksum-sha256") {
+								if sha, ok := ext.GetValue().GetChoice().(*dtpb.Extension_ValueX_StringValue); ok {
+									existingBySHA256[sha.StringValue.Value] = dr
+								}
+							}
+						}
+					}
 				}
 			}
 		}
@@ -418,6 +444,41 @@ func processDRSRecordsAndUpdateFHIR(drsRecords []*drs.DRSObject, LfsRecords []LF
 			return fmt.Errorf("scanner error in %s: %v", docRefFP, err)
 		}
 	}
+
+	// Helper to merge records
+	mergeDocRef := func(existing, new *drpb.DocumentReference) {
+		existing.Status = new.Status
+		existing.DocStatus = new.DocStatus
+		existing.Date = new.Date
+		existing.Identifier = new.Identifier
+		if existing.Content != nil && new.Content != nil && len(existing.Content) > 0 && len(new.Content) > 0 {
+			existingAttachment := existing.Content[0].GetAttachment()
+			newAttachment := new.Content[0].GetAttachment()
+			existingAttachment.Creation = newAttachment.Creation
+			existingAttachment.Size = newAttachment.Size
+			existingAttachment.Title = newAttachment.Title
+
+			// Merge extensions
+			extMap := make(map[string]*dtpb.Extension)
+			for _, ext := range existingAttachment.Extension {
+				extMap[ext.GetUrl().GetValue()] = ext
+			}
+			for _, ext := range newAttachment.Extension {
+				extMap[ext.GetUrl().GetValue()] = ext
+			}
+			var mergedExt []*dtpb.Extension
+			for _, ext := range extMap {
+				mergedExt = append(mergedExt, ext)
+			}
+			existingAttachment.Extension = mergedExt
+			existingAttachment.Url = newAttachment.Url
+		} else {
+			existing.Content = new.Content
+		}
+		existing.Subject = new.Subject
+	}
+
+	finalDocRefIDs := make(map[string]bool)
 
 	count := 0
 	for _, rec := range LfsRecords {
@@ -444,26 +505,18 @@ func processDRSRecordsAndUpdateFHIR(drsRecords []*drs.DRSObject, LfsRecords []LF
 		fhirRecord := containedResource.GetDocumentReference()
 		recordID := fhirRecord.GetId().GetValue()
 
-		BuildDirectoryTreeFromDocRef(endpoint, project, fhirRecord)
-		if existing := existingFHIRRecords[recordID].GetDocumentReference(); existing != nil {
-			existing.Status = fhirRecord.Status
-			existing.DocStatus = fhirRecord.DocStatus
-			existing.Date = fhirRecord.Date
-			existing.Identifier = fhirRecord.Identifier
-			if existing.Content != nil && fhirRecord.Content != nil && len(existing.Content) > 0 && len(fhirRecord.Content) > 0 {
-				existingAttachment := existing.Content[0].GetAttachment()
-				newAttachment := fhirRecord.Content[0].GetAttachment()
-				existingAttachment.Creation = newAttachment.Creation
-				existingAttachment.Size = newAttachment.Size
-				existingAttachment.Title = newAttachment.Title
-				existingAttachment.Extension = newAttachment.Extension
-				existingAttachment.Url = newAttachment.Url
-			} else {
-				existing.Content = fhirRecord.Content
-			}
-			existing.Subject = fhirRecord.Subject
+		if existingCr, ok := existingByPath[rec.Name]; ok {
+			mergeDocRef(existingCr.GetDocumentReference(), fhirRecord)
+			finalDocRefIDs[existingCr.GetDocumentReference().GetId().Value] = true
+		} else if existingCr, ok := existingBySHA256[rec.OID]; ok {
+			// Content matched but path changed (rename)
+			mergeDocRef(existingCr.GetDocumentReference(), fhirRecord)
+			// Update the path in the attachment
+			existingCr.GetDocumentReference().Content[0].GetAttachment().Title = &dtpb.String{Value: rec.Name}
+			finalDocRefIDs[existingCr.GetDocumentReference().GetId().Value] = true
 		} else {
 			existingFHIRRecords[recordID] = containedResource
+			finalDocRefIDs[recordID] = true
 		}
 	}
 
@@ -488,26 +541,12 @@ func processDRSRecordsAndUpdateFHIR(drsRecords []*drs.DRSObject, LfsRecords []LF
 			fhirRecord := containedResource.GetDocumentReference()
 			recordID := fhirRecord.GetId().GetValue()
 
-			BuildDirectoryTreeFromDocRef(endpoint, project, fhirRecord)
-			if existing := existingFHIRRecords[recordID].GetDocumentReference(); existing != nil {
-				existing.Status = fhirRecord.Status
-				existing.DocStatus = fhirRecord.DocStatus
-				existing.Date = fhirRecord.Date
-				existing.Identifier = fhirRecord.Identifier
-				if existing.Content != nil && fhirRecord.Content != nil && len(existing.Content) > 0 && len(fhirRecord.Content) > 0 {
-					existingAttachment := existing.Content[0].GetAttachment()
-					newAttachment := fhirRecord.Content[0].GetAttachment()
-					existingAttachment.Creation = newAttachment.Creation
-					existingAttachment.Size = newAttachment.Size
-					existingAttachment.Title = newAttachment.Title
-					existingAttachment.Extension = newAttachment.Extension
-					existingAttachment.Url = newAttachment.Url
-				} else {
-					existing.Content = fhirRecord.Content
-				}
-				existing.Subject = fhirRecord.Subject
+			if existingCr, ok := existingByPath[rec.Name]; ok {
+				mergeDocRef(existingCr.GetDocumentReference(), fhirRecord)
+				finalDocRefIDs[existingCr.GetDocumentReference().GetId().Value] = true
 			} else {
 				existingFHIRRecords[recordID] = containedResource
+				finalDocRefIDs[recordID] = true
 			}
 			count++
 		}
@@ -525,9 +564,12 @@ func processDRSRecordsAndUpdateFHIR(drsRecords []*drs.DRSObject, LfsRecords []LF
 		fhirRecord := containedResource.GetDocumentReference()
 		recordID := fhirRecord.GetId().GetValue()
 
-		BuildDirectoryTreeFromDocRef(endpoint, project, fhirRecord)
-		if _, exists := existingFHIRRecords[recordID]; !exists {
+		if existingCr, ok := existingBySHA256[drsRecord.Checksums.SHA256]; ok {
+			mergeDocRef(existingCr.GetDocumentReference(), fhirRecord)
+			finalDocRefIDs[existingCr.GetDocumentReference().GetId().Value] = true
+		} else if _, exists := existingFHIRRecords[recordID]; !exists {
 			existingFHIRRecords[recordID] = containedResource
+			finalDocRefIDs[recordID] = true
 			count++
 			remoteOnlyCount++
 		}
@@ -547,7 +589,18 @@ func processDRSRecordsAndUpdateFHIR(drsRecords []*drs.DRSObject, LfsRecords []LF
 	}
 	defer docRefFile.Close()
 
+	// Clear existing DocumentReference links in DirectoryCache before rebuilding
+	ClearDocRefLinks()
+
 	for recordID, record := range existingFHIRRecords {
+		// Only write back records that are still valid (matched or remote-only we just added)
+		if !finalDocRefIDs[recordID] {
+			continue
+		}
+
+		// Rebuild directory tree for each final record
+		BuildDirectoryTreeFromDocRef(endpoint, project, record.GetDocumentReference())
+
 		jsonBytes, err := marshaller.Marshal(record)
 		if err != nil {
 			log.Printf("Error serializing record with id %s: %v. Skipping.", recordID, err)
@@ -562,8 +615,13 @@ func processDRSRecordsAndUpdateFHIR(drsRecords []*drs.DRSObject, LfsRecords []LF
 			break
 		}
 	}
+
+	// Clean up stale DocumentReference links in DirectoryCache
+	RefreshDirectoryChildren(finalDocRefIDs)
+
 	log.Println("Finished writing all DocumentReference records.")
 
+	dirRefFP := filepath.Join(fhirDirectory, DIRECTORY_RESOURCE+NDJSON_EXT)
 	dirRefFile, err := os.Create(dirRefFP)
 	if err != nil {
 		log.Printf("Error creating Directory file %s: %v", dirRefFP, err)
