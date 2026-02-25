@@ -40,7 +40,7 @@ var MetaCmd = &cobra.Command{
 
 		// Display the created tree structure (default depth)
 		fmt.Printf("\nMetadata created successfully in %s\n", outPath)
-		return metadata.VisualizeTree(os.Stdout, outPath, 2)
+		return nil
 	},
 }
 

@@ -113,6 +113,11 @@ func loadNDJSON(path string, processor func([]byte) error) error {
 	defer file.Close()
 
 	scanner := bufio.NewScanner(file)
+	// Increase buffer size to 10MB to handle large JSON lines (common in directories with many children)
+	const maxCapacity = 10 * 1024 * 1024
+	buf := make([]byte, 64*1024)
+	scanner.Buffer(buf, maxCapacity)
+
 	for scanner.Scan() {
 		line := scanner.Bytes()
 		if len(line) == 0 {
