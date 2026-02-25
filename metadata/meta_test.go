@@ -35,6 +35,11 @@ func TestSmartMergeIDPreservation(t *testing.T) {
 			SHA256: initialOID,
 		},
 		CreatedTime: "2023-10-27T10:00:00Z",
+		AccessMethods: []drs.AccessMethod{
+			{
+				AccessURL: drs.AccessURL{URL: "s3://bucket/" + initialOID},
+			},
+		},
 	}
 
 	initialCr := templateDocRef(obj, endpoint, project, rsID)
@@ -68,6 +73,11 @@ func TestSmartMergeIDPreservation(t *testing.T) {
 				SHA256: initialOID,
 			},
 			CreatedTime: "2023-10-27T10:00:00Z",
+			AccessMethods: []drs.AccessMethod{
+				{
+					AccessURL: drs.AccessURL{URL: "s3://bucket/" + initialOID},
+				},
+			},
 		},
 	}
 
@@ -173,6 +183,11 @@ func TestMergeCustomExtensions(t *testing.T) {
 			SHA256: oid,
 		},
 		CreatedTime: "2023-10-27T10:00:00Z",
+		AccessMethods: []drs.AccessMethod{
+			{
+				AccessURL: drs.AccessURL{URL: "s3://bucket/" + oid},
+			},
+		},
 	}
 
 	initialCr := templateDocRef(obj, endpoint, project, rsID)

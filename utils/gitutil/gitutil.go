@@ -2,7 +2,9 @@ package gitutil
 
 import (
 	"fmt"
+	"net/http"
 	"strings"
+	"time"
 
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/config"
@@ -49,8 +51,8 @@ func GetGlobalUserIdentity() (string, error) {
 func TrimGitURLPrefix(rawURL string) (string, error) {
 	trimmedURL := rawURL
 
-	// 1. Strip protocol if present (http, https, git, ssh)
-	prefixes := []string{"https://", "http://", "git://", "ssh://"}
+	// 1. Strip protocol if present (http, https, git, ssh, git+ssh)
+	prefixes := []string{"https://", "http://", "git://", "ssh://", "git+ssh://"}
 	for _, prefix := range prefixes {
 		if strings.HasPrefix(trimmedURL, prefix) {
 			trimmedURL = strings.TrimPrefix(trimmedURL, prefix)
@@ -70,10 +72,24 @@ func TrimGitURLPrefix(rawURL string) (string, error) {
 	// but for git remotes, the first colon is typically the host/path separator.
 	trimmedURL = strings.Replace(trimmedURL, ":", "/", 1)
 
-	// 4. Clean up trailing .git suffix
+	// 4. Handle GitHub SSH-over-443 specifically (ssh.github.com and altssh.github.com)
+	// Normalize them back to canonical github.com
+	ghSSHHosts := []string{"ssh.github.com/", "altssh.github.com/"}
+	for _, host := range ghSSHHosts {
+		if strings.HasPrefix(trimmedURL, host+"443/") {
+			trimmedURL = "github.com/" + strings.TrimPrefix(trimmedURL, host+"443/")
+			break
+		}
+		if strings.HasPrefix(trimmedURL, host) {
+			trimmedURL = "github.com/" + strings.TrimPrefix(trimmedURL, host)
+			break
+		}
+	}
+
+	// 5. Clean up trailing .git suffix
 	trimmedURL = strings.TrimSuffix(trimmedURL, ".git")
 
-	// 5. Trim trailing slash if present
+	// 6. Trim trailing slash if present
 	trimmedURL = strings.TrimSuffix(trimmedURL, "/")
 
 	if trimmedURL == "" {
@@ -81,4 +97,34 @@ func TrimGitURLPrefix(rawURL string) (string, error) {
 	}
 
 	return trimmedURL, nil
+}
+
+// ValidateGitURL checks if the provided normalized Git URL is reachable via HTTPS.
+// If a token is provided, it uses it for authentication.
+func ValidateGitURL(normalizedURL string, token string) error {
+	// Reconstruct a full HTTPS URL for validation
+	validationURL := "https://" + normalizedURL
+	req, err := http.NewRequest("HEAD", validationURL, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create validation request for %s: %w", validationURL, err)
+	}
+
+	if token != "" {
+		req.Header.Set("Authorization", "token "+token)
+	}
+
+	client := &http.Client{
+		Timeout: 5 * time.Second,
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to reach Git repository at %s: %w", validationURL, err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 200 && resp.StatusCode < 400 {
+		return nil
+	}
+
+	return fmt.Errorf("Git repository at %s returned status %s (check if the repository exists or if your token has access)", validationURL, resp.Status)
 }

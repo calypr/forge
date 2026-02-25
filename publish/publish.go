@@ -71,6 +71,13 @@ func RunPublish(token string, profile config.Remote) (*sower.StatusResp, error) 
 	if err != nil {
 		return nil, err
 	}
+
+	// Validate that the repository is actually reachable before starting the job
+	fmt.Printf("Validating access to repository: https://%s\n", url)
+	if err := gitutil.ValidateGitURL(url, token); err != nil {
+		return nil, fmt.Errorf("pre-publish validation failed: %w", err)
+	}
+
 	username, err := gitutil.GetGlobalUserIdentity()
 	if err != nil {
 		return nil, fmt.Errorf("Unable to read global git config to get username: %s", err)
