@@ -27,6 +27,8 @@ import (
 	drpb "github.com/google/fhir/go/proto/google/fhir/proto/r5/core/resources/document_reference_go_proto"
 	rspb "github.com/google/fhir/go/proto/google/fhir/proto/r5/core/resources/research_study_go_proto"
 	"github.com/google/uuid"
+	"github.com/vbauerster/mpb/v8"
+	"github.com/vbauerster/mpb/v8/decor"
 )
 
 const (
@@ -103,35 +105,60 @@ func CreateMeta(outPath string, remote config.Remote) error {
 		return fmt.Errorf("failed to create output directory: %v", err)
 	}
 
-	// Fetch all records from the channel into a slice
-	recs, err := sc.ListObjectsByProject(context.Background(), sc.GetProjectId())
-	if err != nil {
-		return fmt.Errorf("error listing indexd records: %v", err)
-	}
-
-	collectRecs := []*drs.DRSObject{}
-	for res := range recs {
-		if res.Error != nil {
-			// Log the error but continue to process what we have, unless it's a critical non-cancellation error
-			logger.Debug(fmt.Sprintf("Note: result channel error: %v", res.Error))
-			continue
-		}
-		if res.Object != nil {
-			collectRecs = append(collectRecs, res.Object)
-		}
-	}
-
+	// 1. Get local files first (LFS and Git)
 	LFSRecords, err := findLFSRecords()
 	if err != nil {
 		return err
 	}
 
-	var gitRecords []LFSRecord
 	repo, err := gitutil.OpenRepository(".")
 	if err != nil {
 		return fmt.Errorf("failed to open repository: %v", err)
 	}
-	gitRecords, err = findGitFiles(repo)
+	gitRecords, err := findGitFiles(repo)
+	if err != nil {
+		return err
+	}
+
+	// 2. Fetch DRS records from Indexd using the fast Project list API
+	// but strictly filter to only those that match local LFS hashes.
+	uniqueHashes := make(map[string]bool)
+	for _, r := range LFSRecords {
+		uniqueHashes[r.OID] = true
+	}
+
+	collectRecs := []*drs.DRSObject{}
+	recs, err := sc.ListObjectsByProject(context.Background(), sc.GetProjectId())
+	if err != nil {
+		return fmt.Errorf("error listing indexd records: %v", err)
+	}
+
+	p := mpb.New(mpb.WithWidth(64))
+	bar := p.AddBar(0, // total unknown
+		mpb.PrependDecorators(
+			decor.Name("Fetching Indexd records: "),
+			decor.Elapsed(decor.ET_STYLE_GO),
+		),
+		mpb.AppendDecorators(
+			decor.CountersNoUnit("%d processed"),
+		),
+	)
+
+	for res := range recs {
+		bar.Increment()
+		if res.Error != nil {
+			logger.Debug(fmt.Sprintf("Note: result channel error: %v", res.Error))
+			continue
+		}
+		if res.Object != nil {
+			// Pull only the indexd records that are also in the git-lfs structure
+			if uniqueHashes[res.Object.Checksums.SHA256] {
+				collectRecs = append(collectRecs, res.Object)
+			}
+		}
+	}
+	bar.SetTotal(bar.Current(), true) // mark as done
+	p.Wait()
 
 	var githubURL, commitHash string
 	hash, err := gitutil.GetLastLocalCommit(repo)
@@ -150,7 +177,7 @@ func CreateMeta(outPath string, remote config.Remote) error {
 		}
 	}
 
-	// Now that we have a channel, we can pass it directly to the merging function
+	// Now that we have the matched records, process and update FHIR files
 	if err := processDRSRecordsAndUpdateFHIR(collectRecs, LFSRecords, gitRecords, outPath, sc.GetGen3Interface().GetCredential().APIEndpoint, sc.GetProjectId(), rsID, githubURL, commitHash); err != nil {
 		return fmt.Errorf("failed to process DRS records: %v", err)
 	}
@@ -552,34 +579,11 @@ func processDRSRecordsAndUpdateFHIR(drsRecords []*drs.DRSObject, LfsRecords []LF
 		}
 	}
 
-	// Finally, add any DRS records that haven't been processed yet (remote-only records)
-	remoteOnlyCount := 0
-	for _, drsRecord := range drsRecords {
-		if matchedDrsOids[drsRecord.Checksums.SHA256] {
-			continue
-		}
-
-		// This record exists on the server but was not matched to a local file
-		containedResource := templateDocRef(drsRecord, endpoint, project, researchStudyID)
-		fhirRecord := containedResource.GetDocumentReference()
-		recordID := fhirRecord.GetId().GetValue()
-
-		if existingCr, ok := existingBySHA256[drsRecord.Checksums.SHA256]; ok {
-			mergeDocRef(existingCr.GetDocumentReference(), fhirRecord)
-			finalDocRefIDs[existingCr.GetDocumentReference().GetId().Value] = true
-		} else if _, exists := existingFHIRRecords[recordID]; !exists {
-			existingFHIRRecords[recordID] = containedResource
-			finalDocRefIDs[recordID] = true
-			count++
-			remoteOnlyCount++
-		}
-	}
-
 	if count == 0 {
-		log.Printf("WARNING: Processed 0 records. This means no matches were found between DRS objects on remote and local LFS files, and no remote objects were found for project '%s'.", project)
+		log.Printf("WARNING: Processed 0 records. This means no matches were found between DRS objects on remote and local LFS files for project '%s'.", project)
 		log.Printf("Verify that project ID '%s' is correct and that files are indexed on the remote DRS server '%s'.", project, endpoint)
 	} else {
-		log.Printf("Processed %d records (%d remote-only)", count, remoteOnlyCount)
+		log.Printf("Processed %d records", count)
 	}
 
 	docRefFile, err := os.Create(docRefFP)
