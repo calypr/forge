@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 
 	"github.com/calypr/data-client/g3client"
 	"github.com/calypr/data-client/sower"
@@ -15,7 +16,6 @@ import (
 
 // This job name must match the sower config otherwise job won't start
 const FHIR_JOB_NAME = "fhir_import_export"
-const SOURCE_GH_USER_ENDPOINT = "https://source.ohsu.edu/api/v3/user"
 const POD_PUT_METHOD = "put"
 const POD_DELETE_METHOD = "delete"
 
@@ -46,10 +46,6 @@ func RunEmpty(projectId string, remote config.Remote) (*sower.StatusResp, error)
 }
 
 func RunPublish(token string, profile config.Remote) (*sower.StatusResp, error) {
-	err := checkGHPAccessToken(token)
-	if err != nil {
-		return nil, err
-	}
 	repo, err := gitutil.OpenRepository(".")
 	if err != nil {
 		return nil, err
@@ -68,6 +64,13 @@ func RunPublish(token string, profile config.Remote) (*sower.StatusResp, error) 
 	}
 	remoteURL := urls[0]
 	url, err := gitutil.TrimGitURLPrefix(remoteURL)
+	if err != nil {
+		return nil, err
+	}
+
+	// Determine the correct GitHub API endpoint and validate the token
+	apiEndpoint := getGitHubAPIEndpoint(url)
+	err = checkGHPAccessToken(token, apiEndpoint)
 	if err != nil {
 		return nil, err
 	}
@@ -143,8 +146,8 @@ func RunPublish(token string, profile config.Remote) (*sower.StatusResp, error) 
 	return resp, nil
 }
 
-func checkGHPAccessToken(token string) error {
-	req, err := http.NewRequest(http.MethodGet, SOURCE_GH_USER_ENDPOINT, nil)
+func checkGHPAccessToken(token string, apiEndpoint string) error {
+	req, err := http.NewRequest(http.MethodGet, apiEndpoint, nil)
 	if err != nil {
 		return fmt.Errorf("Error creating request: %s\n", err)
 	}
@@ -170,4 +173,11 @@ func checkGHPAccessToken(token string) error {
 	} else {
 		return fmt.Errorf("\nUnexpected response status: %d\n", resp.StatusCode)
 	}
+}
+
+func getGitHubAPIEndpoint(normalizedURL string) string {
+	if strings.HasPrefix(normalizedURL, "source.ohsu.edu") {
+		return "https://source.ohsu.edu/api/v3/user"
+	}
+	return "https://api.github.com/user"
 }

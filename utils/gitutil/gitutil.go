@@ -102,15 +102,26 @@ func TrimGitURLPrefix(rawURL string) (string, error) {
 // ValidateGitURL checks if the provided normalized Git URL is reachable via HTTPS.
 // If a token is provided, it uses it for authentication.
 func ValidateGitURL(normalizedURL string, token string) error {
-	// Reconstruct a full HTTPS URL for validation
+	// Mirror the standard git discovery protocol (git clone protocol)
+	// This is the most reliable way to check if a git repo is accessible.
 	validationURL := "https://" + normalizedURL
-	req, err := http.NewRequest("HEAD", validationURL, nil)
+	if !strings.HasSuffix(validationURL, ".git") {
+		validationURL += ".git"
+	}
+	validationURL += "/info/refs?service=git-upload-pack"
+
+	req, err := http.NewRequest("GET", validationURL, nil)
 	if err != nil {
 		return fmt.Errorf("failed to create validation request for %s: %w", validationURL, err)
 	}
 
+	// Identify as git to ensure the server responds via the git protocol
+	req.Header.Set("User-Agent", "git/2.43.0")
+
 	if token != "" {
-		req.Header.Set("Authorization", "token "+token)
+		// Using 'x-access-token' is the most robust way to provide a PAT
+		// for Git operations across most GitHub-like environments.
+		req.SetBasicAuth("x-access-token", token)
 	}
 
 	client := &http.Client{
@@ -122,9 +133,9 @@ func ValidateGitURL(normalizedURL string, token string) error {
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode >= 200 && resp.StatusCode < 400 {
+	if resp.StatusCode == 200 {
 		return nil
 	}
 
-	return fmt.Errorf("Git repository at %s returned status %s (check if the repository exists or if your token has access)", validationURL, resp.Status)
+	return fmt.Errorf("Git repository access failed (status %s). Check if the repository path is correct and your token has 'repo' permissions.", resp.Status)
 }
