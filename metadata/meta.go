@@ -185,17 +185,20 @@ func CreateMeta(outPath string, remote config.Remote) error {
 	return nil
 }
 
-// getOrCreateRootDirectory ensures the root directory ("/") exists in DirectoryCache
+// getOrCreateRootDirectory ensures the root directory (".") exists in DirectoryCache
 func getOrCreateRootDirectory(endpoint string, project string) *Directory {
-	cleanPath := "/"
-	cacheKey := project + ":" + cleanPath
+	// Root is stored as "." in cache keys to match filepath.Clean behavior
+	cacheKey := project + ":."
 	if dir, ok := DirectoryCache[cacheKey]; ok {
 		return dir
 	}
-	dirUUID := uuid.NewSHA1(uuid.NewSHA1(uuid.NameSpaceDNS, []byte(endpoint)), []byte(project+cleanPath)).String()
+
+	// Canonical clean path to root is "." for internal logic
+	dirUUID := uuid.NewSHA1(uuid.NewSHA1(uuid.NameSpaceDNS, []byte(endpoint)), []byte(project+".")).String()
 	newDir := &Directory{
-		Name:         "/",
+		Name:         "/", // Display as "/"
 		Id:           dirUUID,
+		Path:         ".",
 		ResourceType: DIRECTORY_RESOURCE,
 		Child:        []*dtpb.Reference{},
 	}
@@ -431,7 +434,17 @@ func processDRSRecordsAndUpdateFHIR(drsRecords []*drs.DRSObject, LfsRecords []LF
 		}
 	} else {
 		defer file.Close()
+
+		// Determine the best scanner buffer size based on actual file size
+		maxCapacity := 10 * 1024 * 1024 // 10MB default
+		if info, err := file.Stat(); err == nil && info.Size() > int64(maxCapacity) {
+			maxCapacity = int(info.Size())
+		}
+
 		scanner := bufio.NewScanner(file)
+		buf := make([]byte, 64*1024)
+		scanner.Buffer(buf, maxCapacity)
+
 		for scanner.Scan() {
 			line := scanner.Bytes()
 			if len(line) > 0 {
@@ -439,9 +452,42 @@ func processDRSRecordsAndUpdateFHIR(drsRecords []*drs.DRSObject, LfsRecords []LF
 					fmt.Printf("Invalid JSON in %s: %s. Skipping record.\n", docRefFP, string(line))
 					continue
 				}
-				dr, err := unmarshaller.UnmarshalR5(line)
+				// Robust unmarshal: Handle both wrapped (Gen3 style) and unwrapped (Raw FHIR) formats
+				var dr *cprb.ContainedResource
+				// Attempt to unmarshal line. UnmarshalR5 returns specifically what's in 'resourceType'
+				msg, err := unmarshaller.UnmarshalR5(line)
+				if err != nil || msg == nil {
+					// Fallback: Check for Gen3-wrapped record: {"documentReference": { ... }}
+					var m map[string]json.RawMessage
+					if err2 := json.Unmarshal(line, &m); err2 == nil {
+						if inner, ok := m["documentReference"]; ok {
+							msg, err = unmarshaller.UnmarshalR5(inner)
+						}
+					}
+				}
+
 				if err != nil {
-					fmt.Printf("Invalid FHIR record in %s: %v. Skipping record.\n", docRefFP, err)
+					snippet := string(line)
+					if len(snippet) > 80 {
+						snippet = snippet[:80] + "..."
+					}
+					fmt.Printf("Warning: Failed to unmarshal record in %s: %v. Skipping line: %s\n", docRefFP, err, snippet)
+					continue
+				}
+
+				// Safely normalize to *cprb.ContainedResource using an interface switch
+				switch m := (interface{})(msg).(type) {
+				case *cprb.ContainedResource:
+					dr = m
+				case *drpb.DocumentReference:
+					// Wrap raw DocumentReference into ContainedResource for consistent processing
+					dr = &cprb.ContainedResource{
+						OneofResource: &cprb.ContainedResource_DocumentReference{
+							DocumentReference: m,
+						},
+					}
+				default:
+					fmt.Printf("Warning: Skipping record in %s of unsupported type %T\n", docRefFP, msg)
 					continue
 				}
 				docRef := dr.GetDocumentReference()
@@ -463,6 +509,21 @@ func processDRSRecordsAndUpdateFHIR(drsRecords []*drs.DRSObject, LfsRecords []LF
 								}
 							}
 						}
+
+						// Also match by file_sha256 in category codings
+						for _, cat := range docRef.Category {
+							for _, coding := range cat.Coding {
+								if coding.GetCode().GetValue() == "file_sha256" || coding.GetSystem().GetValue() == "https://humantumoratlas.org/file_sha256" {
+									sha := coding.GetDisplay().GetValue()
+									if sha == "" {
+										sha = cat.GetText().GetValue()
+									}
+									if sha != "" {
+										existingBySHA256[sha] = dr
+									}
+								}
+							}
+						}
 					}
 				}
 			}
@@ -477,7 +538,21 @@ func processDRSRecordsAndUpdateFHIR(drsRecords []*drs.DRSObject, LfsRecords []LF
 		existing.Status = new.Status
 		existing.DocStatus = new.DocStatus
 		existing.Date = new.Date
+
+		// Merge identifiers
+		existingIds := make(map[string]bool)
+		for _, id := range new.Identifier {
+			key := fmt.Sprintf("%s|%s", id.GetSystem().GetValue(), id.GetValue().GetValue())
+			existingIds[key] = true
+		}
+		for _, id := range existing.Identifier {
+			key := fmt.Sprintf("%s|%s", id.GetSystem().GetValue(), id.GetValue().GetValue())
+			if !existingIds[key] {
+				new.Identifier = append(new.Identifier, id)
+			}
+		}
 		existing.Identifier = new.Identifier
+
 		if existing.Content != nil && new.Content != nil && len(existing.Content) > 0 && len(new.Content) > 0 {
 			existingAttachment := existing.Content[0].GetAttachment()
 			newAttachment := new.Content[0].GetAttachment()
@@ -499,9 +574,32 @@ func processDRSRecordsAndUpdateFHIR(drsRecords []*drs.DRSObject, LfsRecords []LF
 			}
 			existingAttachment.Extension = mergedExt
 			existingAttachment.Url = newAttachment.Url
-		} else {
+		} else if new.Content != nil {
 			existing.Content = new.Content
 		}
+
+		// Merge categories to preserve rich metadata (Assay, Level, file_sha256, etc.)
+		existingCatKeys := make(map[string]bool)
+		for _, cat := range existing.Category {
+			for _, coding := range cat.Coding {
+				key := fmt.Sprintf("%s|%s", coding.GetSystem().GetValue(), coding.GetCode().GetValue())
+				existingCatKeys[key] = true
+			}
+		}
+		for _, cat := range new.Category {
+			addCat := true
+			for _, coding := range cat.Coding {
+				key := fmt.Sprintf("%s|%s", coding.GetSystem().GetValue(), coding.GetCode().GetValue())
+				if existingCatKeys[key] {
+					addCat = false
+					break
+				}
+			}
+			if addCat {
+				existing.Category = append(existing.Category, cat)
+			}
+		}
+
 		existing.Subject = new.Subject
 	}
 
@@ -542,7 +640,11 @@ func processDRSRecordsAndUpdateFHIR(drsRecords []*drs.DRSObject, LfsRecords []LF
 			existingCr.GetDocumentReference().Content[0].GetAttachment().Title = &dtpb.String{Value: rec.Name}
 			finalDocRefIDs[existingCr.GetDocumentReference().GetId().Value] = true
 		} else {
-			existingFHIRRecords[recordID] = containedResource
+			if existingCr, ok := existingFHIRRecords[recordID]; ok {
+				mergeDocRef(existingCr.GetDocumentReference(), fhirRecord)
+			} else {
+				existingFHIRRecords[recordID] = containedResource
+			}
 			finalDocRefIDs[recordID] = true
 		}
 	}
@@ -572,7 +674,11 @@ func processDRSRecordsAndUpdateFHIR(drsRecords []*drs.DRSObject, LfsRecords []LF
 				mergeDocRef(existingCr.GetDocumentReference(), fhirRecord)
 				finalDocRefIDs[existingCr.GetDocumentReference().GetId().Value] = true
 			} else {
-				existingFHIRRecords[recordID] = containedResource
+				if existingCr, ok := existingFHIRRecords[recordID]; ok {
+					mergeDocRef(existingCr.GetDocumentReference(), fhirRecord)
+				} else {
+					existingFHIRRecords[recordID] = containedResource
+				}
 				finalDocRefIDs[recordID] = true
 			}
 			count++
@@ -593,14 +699,12 @@ func processDRSRecordsAndUpdateFHIR(drsRecords []*drs.DRSObject, LfsRecords []LF
 	}
 	defer docRefFile.Close()
 
-	// Clear existing DocumentReference links in DirectoryCache before rebuilding
-	ClearDocRefLinks()
+	// Reset DirectoryCache to rebuild the tree cleanly from the current ground-truth DocumentReferences.
+	// This ensures ghost directories from previous runs or bucket implementation details (like S3/GitHub web paths)
+	// are completely purged if they are no longer reachable from any actual logical record.
+	DirectoryCache = make(map[string]*Directory)
 
 	for recordID, record := range existingFHIRRecords {
-		// Only write back records that are still valid (matched or remote-only we just added)
-		if !finalDocRefIDs[recordID] {
-			continue
-		}
 
 		// Rebuild directory tree for each final record
 		BuildDirectoryTreeFromDocRef(endpoint, project, record.GetDocumentReference())
@@ -620,8 +724,7 @@ func processDRSRecordsAndUpdateFHIR(drsRecords []*drs.DRSObject, LfsRecords []LF
 		}
 	}
 
-	// Clean up stale DocumentReference links in DirectoryCache
-	RefreshDirectoryChildren(finalDocRefIDs)
+	// Directory children are already refreshed by BuildDirectoryTreeFromDocRef
 
 	log.Println("Finished writing all DocumentReference records.")
 

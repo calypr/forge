@@ -116,7 +116,15 @@ func LoadDirectories(path string, project string) error {
 	}
 	defer file.Close()
 
+	// Determine the best scanner buffer size based on actual file size
+	maxCapacity := 10 * 1024 * 1024 // 10MB default
+	if info, err := file.Stat(); err == nil && info.Size() > int64(maxCapacity) {
+		maxCapacity = int(info.Size())
+	}
+
 	scanner := bufio.NewScanner(file)
+	buf := make([]byte, 64*1024)
+	scanner.Buffer(buf, maxCapacity)
 	for scanner.Scan() {
 		line := scanner.Bytes()
 		if len(line) == 0 {
@@ -128,11 +136,9 @@ func LoadDirectories(path string, project string) error {
 			continue
 		}
 
-		// Rebuild the cache key using the path if available, otherwise just project:id
-		cacheKey := project + ":" + dir.Id
-		if dir.Path != "" {
-			cacheKey = project + ":" + dir.Path
-		}
+		// Always use filepath.Clean for consistent cache keys (Standardizes root as "." and removes leading slashes)
+		cleanPath := filepath.Clean(dir.Path)
+		cacheKey := project + ":" + cleanPath
 		DirectoryCache[cacheKey] = &dir
 	}
 	return scanner.Err()
@@ -142,12 +148,8 @@ func LoadDirectories(path string, project string) error {
 // for a given POSIX path (e.g., "/a/b/c"). It returns the Directory
 // object for the target path.
 func EnsureDirectoryPathExists(endpoint string, project string, posixPath string) *Directory {
-	// Clean and normalize the path to standard POSIX separators (/)
+	// Clean and normalize the path. Relative paths become ".", "a/b", etc.
 	cleanPath := filepath.Clean(posixPath)
-	// Use the clean path as the unique key in our cache.
-	if cleanPath == "." {
-		cleanPath = "/"
-	}
 
 	cacheKey := project + ":" + cleanPath
 	// If the directory already exists in our cache, return it
@@ -156,15 +158,26 @@ func EnsureDirectoryPathExists(endpoint string, project string, posixPath string
 	}
 
 	dirUUID := uuid.NewSHA1(uuid.NewSHA1(uuid.NameSpaceDNS, []byte(endpoint)), []byte(project+cleanPath)).String()
-	// Base case: Handle the root path "/"
-	if cleanPath == "/" {
-		DirectoryCache[cacheKey] = &Directory{
+	// Base case: Handle the root path "." (result of filepath.Clean on empty or "/")
+	if cleanPath == "." || cleanPath == "/" {
+		// Standardize root to "." in cache but display as "/" in the tree
+		rootKey := project + ":."
+		if dir, ok := DirectoryCache[rootKey]; ok {
+			return dir
+		}
+
+		DirectoryCache[rootKey] = &Directory{
 			Name:         "/",
 			Id:           dirUUID,
-			Path:         "/",
+			Path:         ".",
 			ResourceType: DIRECTORY_RESOURCE,
 		}
-		return DirectoryCache[cacheKey]
+		return DirectoryCache[rootKey]
+	}
+
+	// For relative paths that hit ".", treat them as root
+	if cleanPath == "." {
+		return EnsureDirectoryPathExists(endpoint, project, "/")
 	}
 
 	// Determine the parent path and recursively ensure it exists
@@ -209,19 +222,71 @@ func EnsureDirectoryPathExists(endpoint string, project string, posixPath string
 // BuildDirectoryTreeFromDocRef extracts the path from a DocumentReference and builds the tree.
 // It ensures all necessary Directory nodes are created and linked in the global DirectoryCache.
 func BuildDirectoryTreeFromDocRef(endpoint string, project string, docRef *drpb.DocumentReference) {
-	if len(docRef.Content) == 0 || docRef.Content[0].GetAttachment().GetUrl().GetValue() == "" {
-		log.Println("DocumentReference missing URL attachment.")
+	if len(docRef.Content) == 0 || docRef.Content[0].GetAttachment() == nil {
+		log.Println("DocumentReference missing attachment.")
 		return
 	}
 
-	rawURL := docRef.Content[0].GetAttachment().GetTitle().GetValue()
-	u, err := url.Parse(rawURL)
-	if err != nil {
-		log.Printf("Error parsing URL %s for DocRef %s: %v\n", rawURL, docRef.GetId().GetValue(), err)
-		return
+	rawTitle := docRef.Content[0].GetAttachment().GetTitle().GetValue()
+	rawURL := docRef.Content[0].GetAttachment().GetUrl().GetValue()
+
+	// Determine the source of the record (S3, GitHub, etc.)
+	source := ""
+	// Search through attachment extensions for the source field
+	for _, ext := range docRef.Content[0].GetAttachment().GetExtension() {
+		extURL := ext.GetUrl().GetValue()
+		// Match the source extension URL (handle both relative and absolute)
+		if strings.HasSuffix(extURL, SOURCE_EXTENSION_URL) {
+			source = ext.GetValue().GetStringValue().GetValue()
+			break
+		}
 	}
 
-	posixPath := u.Path
+	// Heuristic for logical path selection:
+	// 1. If Title contains slashes, it is our logical path (e.g., "data/foo.csv"). TRUST IT.
+	// 2. For GitHub files, Title IS the relative path. NEVER use URL fallback as it's a web path.
+	// 3. For others (S3/GDC), only use URL fallback if Title is flat AND URL follows a POSIX-like path.
+	//    BUT: Never use UUID-prefixed bucket paths (like GDC/TCGA mirrors) if they differ from logical intent.
+
+	posixPath := rawTitle
+	hasHierarchy := strings.Contains(posixPath, "/") || strings.Contains(posixPath, "\\")
+
+	// Strip schemes if Title was mis-set to a full URL
+	if strings.Contains(posixPath, "://") {
+		u, err := url.Parse(posixPath)
+		if err == nil && u.Path != "" {
+			posixPath = u.Path
+			hasHierarchy = strings.Contains(posixPath, "/") || strings.Contains(posixPath, "\\")
+		}
+	}
+
+	if source != GITHUB_SOURCE && !hasHierarchy {
+		// FALLBACK: Only for non-GitHub files where Title is flat (no slashes)
+		if strings.Contains(rawURL, "://") {
+			u, err := url.Parse(rawURL)
+			if err == nil && u.Path != "" {
+				urlPath := u.Path
+				// EXCLUSION: If the URL path is a storage hash path (UUID/Hash/Indexd-style), avoid it.
+				// We detect this by checking if the first component is a UUID or if it's "obviously" a storage path.
+				components := strings.Split(strings.Trim(urlPath, "/"), "/")
+				isLogical := true
+				if len(components) > 0 {
+					if _, err := uuid.Parse(components[0]); err == nil {
+						isLogical = false // It's a bucket path start (UUID)
+					}
+				}
+
+				if isLogical {
+					posixPath = urlPath
+				}
+			}
+		}
+	}
+
+	// Standardize to relative path (no leading slash) for consistent caching
+	posixPath = strings.TrimPrefix(posixPath, "/")
+	posixPath = filepath.Clean(posixPath)
+
 	dirPath := filepath.Dir(posixPath)
 
 	// Recursively create all directories up to the file's parent

@@ -12,6 +12,8 @@ import (
 
 	"github.com/google/fhir/go/fhirversion"
 	"github.com/google/fhir/go/jsonformat"
+	cprb "github.com/google/fhir/go/proto/google/fhir/proto/r5/core/resources/bundle_and_contained_resource_go_proto"
+	drpb "github.com/google/fhir/go/proto/google/fhir/proto/r5/core/resources/document_reference_go_proto"
 )
 
 // VisualizeTree reads NDJSON files and prints a tree structure to the provided writer.
@@ -44,16 +46,57 @@ func VisualizeTree(out io.Writer, metaDir string, maxDepth int) error {
 	}
 
 	if err := loadNDJSON(docRefFP, func(line []byte) error {
-		dr, err := unmarshaller.UnmarshalR5(line)
+		// Robust unmarshal: Handle both wrapped (Gen3 style) and unwrapped (Raw FHIR) formats
+		var dr *cprb.ContainedResource
+		// Attempt to unmarshal line. UnmarshalR5 returns specifically what's in 'resourceType'
+		msg, err := unmarshaller.UnmarshalR5(line)
 		if err != nil {
-			return err
+			// Fallback: Check for Gen3-wrapped record: {"documentReference": { ... }}
+			var m map[string]json.RawMessage
+			if err2 := json.Unmarshal(line, &m); err2 == nil {
+				if inner, ok := m["documentReference"]; ok {
+					msg, err = unmarshaller.UnmarshalR5(inner)
+				}
+			}
 		}
+
+		if err != nil {
+			snippet := string(line)
+			if len(snippet) > 80 {
+				snippet = snippet[:80] + "..."
+			}
+			return fmt.Errorf("error loading DocumentReference: %v (data: %s)", err, snippet)
+		}
+
+		// Normalize msg (proto.Message) to *cprb.ContainedResource
+		switch m := (interface{})(msg).(type) {
+		case *cprb.ContainedResource:
+			dr = m
+		case *drpb.DocumentReference:
+			// Wrap raw DocumentReference into ContainedResource for consistency
+			dr = &cprb.ContainedResource{
+				OneofResource: &cprb.ContainedResource_DocumentReference{
+					DocumentReference: m,
+				},
+			}
+		default:
+			return nil // Skip non-DocumentReference types
+		}
+
 		docRef := dr.GetDocumentReference()
 		if docRef != nil {
 			id := docRef.GetId().GetValue()
 			title := ""
 			if len(docRef.Content) > 0 {
 				title = docRef.Content[0].GetAttachment().GetTitle().GetValue()
+				// Robustness fix: if Title is just a filename ("foo.dat"), but the URL has the full path
+				// ("file:///data/raw/foo.dat"), we fallback to the URL to ensure it shows in the right folder.
+				if !strings.Contains(title, "/") && !strings.Contains(title, "\\") {
+					rawURL := docRef.Content[0].GetAttachment().GetUrl().GetValue()
+					if strings.HasPrefix(rawURL, "file://") {
+						title = strings.TrimPrefix(rawURL, "file://")
+					}
+				}
 			}
 			if title == "" {
 				title = id
@@ -67,20 +110,29 @@ func VisualizeTree(out io.Writer, metaDir string, maxDepth int) error {
 	}
 
 	// 3. Find the root directory(ies)
-	// Usually there is one root directory with path "/"
+	// Usually there is one root directory with path "/" or "."
 	var roots []*Directory
 	for _, d := range dirs {
-		if d.Path == "/" || d.Name == "/" {
+		if d.Path == "/" || d.Name == "/" || d.Path == "." || d.Name == "" {
 			roots = append(roots, d)
 		}
 	}
 
 	if len(roots) == 0 && len(dirs) > 0 {
-		// If no clear root, might be a disconnected tree, find nodes that aren't children of others?
-		// For now just pick any if "/" is missing
+		// If no clear root, look for directories that are NOT children of any other directory
+		isChild := make(map[string]bool)
 		for _, d := range dirs {
-			roots = append(roots, d)
-			break
+			for _, child := range d.Child {
+				refStr, _ := extractReferenceString(child)
+				if strings.HasPrefix(refStr, "Directory/") {
+					isChild[strings.TrimPrefix(refStr, "Directory/")] = true
+				}
+			}
+		}
+		for _, d := range dirs {
+			if !isChild[d.Id] {
+				roots = append(roots, d)
+			}
 		}
 	}
 
@@ -112,9 +164,13 @@ func loadNDJSON(path string, processor func([]byte) error) error {
 	}
 	defer file.Close()
 
+	// Determine the best scanner buffer size based on actual file size
+	maxCapacity := 10 * 1024 * 1024 // 10MB default
+	if info, err := file.Stat(); err == nil && info.Size() > int64(maxCapacity) {
+		maxCapacity = int(info.Size())
+	}
+
 	scanner := bufio.NewScanner(file)
-	// Increase buffer size to 10MB to handle large JSON lines (common in directories with many children)
-	const maxCapacity = 10 * 1024 * 1024
 	buf := make([]byte, 64*1024)
 	scanner.Buffer(buf, maxCapacity)
 

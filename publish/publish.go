@@ -53,11 +53,11 @@ func RunPublish(token string, profile config.Remote) (*sower.StatusResp, error) 
 	// NOTE: hardcode to retrieve from git remote "origin"
 	remote, err := repo.Remote(string(profile))
 	if err != nil {
-		return nil, fmt.Errorf("failed to get 'origin' remote: %w", err)
+		return nil, fmt.Errorf("failed to get '%s' remote: %w", string(profile), err)
 	}
 	urls := remote.Config().URLs
 	if len(urls) == 0 {
-		return nil, fmt.Errorf("no URLs found for 'origin' remote")
+		return nil, fmt.Errorf("no URLs found for '%s' remote", string(profile))
 	}
 	if len(urls) > 1 {
 		return nil, fmt.Errorf("not expecting more than 1 remote url. Got %d: %s", len(urls), urls)
