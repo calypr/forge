@@ -2,21 +2,33 @@ package metadata
 
 import (
 	"bufio"
+	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
 
-	idxClient "github.com/calypr/git-drs/client"
+	"github.com/calypr/data-client/drs"
+	"github.com/calypr/forge/utils/gitutil"
+	"github.com/calypr/git-drs/config"
+	"github.com/calypr/git-drs/drslog"
+	"github.com/go-git/go-git/v5"
+	"github.com/go-git/go-git/v5/plumbing/object"
 	fver "github.com/google/fhir/go/fhirversion"
 	"github.com/google/fhir/go/jsonformat"
 	code "github.com/google/fhir/go/proto/google/fhir/proto/r5/core/codes_go_proto"
 	dtpb "github.com/google/fhir/go/proto/google/fhir/proto/r5/core/datatypes_go_proto"
 	cprb "github.com/google/fhir/go/proto/google/fhir/proto/r5/core/resources/bundle_and_contained_resource_go_proto"
+	drpb "github.com/google/fhir/go/proto/google/fhir/proto/r5/core/resources/document_reference_go_proto"
 	rspb "github.com/google/fhir/go/proto/google/fhir/proto/r5/core/resources/research_study_go_proto"
 	"github.com/google/uuid"
+	"github.com/vbauerster/mpb/v8"
+	"github.com/vbauerster/mpb/v8/decor"
 )
 
 const (
@@ -51,16 +63,28 @@ type MetaStructure struct {
 	Path     string   `json:"path"`
 }
 
-func RunMetaInit(outPath string) error {
+func CreateMeta(outPath string, remote config.Remote) error {
 	var rsID string
-	cfg, err := idxClient.NewIndexDClient(&idxClient.NoOpLogger{})
+	var err error
+	cfg, err := config.LoadConfig()
 	if err != nil {
 		return err
 	}
 
-	idxCl, ok := cfg.(*idxClient.IndexDClient)
-	if !ok {
-		return fmt.Errorf("Config is not IndexDClient")
+	logger, err := drslog.NewLogger("", true)
+	if err != nil {
+		return err
+	}
+
+	sc, err := cfg.GetRemoteClient(remote, logger)
+	if err != nil {
+		return err
+	}
+
+	// Load existing directories and DocumentReferences if they exist
+	dirRefFP := filepath.Join(outPath, DIRECTORY_RESOURCE+NDJSON_EXT)
+	if err := LoadDirectories(dirRefFP, sc.GetProjectId()); err != nil {
+		logger.Debug(fmt.Sprintf("Warning: could not load existing directories: %v", err))
 	}
 
 	marshaller, err := jsonformat.NewMarshaller(false, "", "", fver.R5)
@@ -72,7 +96,7 @@ func RunMetaInit(outPath string) error {
 		return fmt.Errorf("failed to create FHIR unmarshaller: %v", err)
 	}
 
-	rsID, err = getResearchStudy(META_DIR, idxCl.ProjectId, idxCl.Base.Host, marshaller, unmarshaller)
+	rsID, err = getResearchStudy(META_DIR, sc.GetProjectId(), sc.GetGen3Interface().GetCredential().APIEndpoint, marshaller, unmarshaller)
 	if err != nil {
 		return err
 	}
@@ -81,34 +105,104 @@ func RunMetaInit(outPath string) error {
 		return fmt.Errorf("failed to create output directory: %v", err)
 	}
 
-	// Fetch all records from the channel into a slice
-	recs, err := idxCl.ListObjectsByProject(idxCl.ProjectId)
+	// 1. Get local files first (LFS and Git)
+	LFSRecords, err := findLFSRecords()
+	if err != nil {
+		return err
+	}
+
+	repo, err := gitutil.OpenRepository(".")
+	if err != nil {
+		return fmt.Errorf("failed to open repository: %v", err)
+	}
+	gitRecords, err := findGitFiles(repo)
+	if err != nil {
+		return err
+	}
+
+	// 2. Fetch DRS records from Indexd using the fast Project list API
+	// but strictly filter to only those that match local LFS hashes.
+	uniqueHashes := make(map[string]bool)
+	for _, r := range LFSRecords {
+		uniqueHashes[r.OID] = true
+	}
+
+	collectRecs := []*drs.DRSObject{}
+	recs, err := sc.ListObjectsByProject(context.Background(), sc.GetProjectId())
 	if err != nil {
 		return fmt.Errorf("error listing indexd records: %v", err)
 	}
 
-	// Now that we have a channel, we can pass it directly to the merging function
-	if err := processDRSRecordsAndUpdateFHIR(recs, outPath, idxCl.Base.Host, idxCl.ProjectId, rsID); err != nil {
+	p := mpb.New(mpb.WithWidth(64))
+	bar := p.AddBar(0, // total unknown
+		mpb.PrependDecorators(
+			decor.Name("Fetching Indexd records: "),
+			decor.Elapsed(decor.ET_STYLE_GO),
+		),
+		mpb.AppendDecorators(
+			decor.CountersNoUnit("%d processed"),
+		),
+	)
+
+	for res := range recs {
+		bar.Increment()
+		if res.Error != nil {
+			logger.Debug(fmt.Sprintf("Note: result channel error: %v", res.Error))
+			continue
+		}
+		if res.Object != nil {
+			// Pull only the indexd records that are also in the git-lfs structure
+			if uniqueHashes[res.Object.Checksums.SHA256] {
+				collectRecs = append(collectRecs, res.Object)
+			}
+		}
+	}
+	bar.SetTotal(bar.Current(), true) // mark as done
+	p.Wait()
+
+	var githubURL, commitHash string
+	hash, err := gitutil.GetLastLocalCommit(repo)
+	if err == nil {
+		commitHash = hash.String()
+	}
+	repoRemote, err := repo.Remote(string(remote))
+	if err != nil {
+		return fmt.Errorf("failed to get remote: %v", err)
+	}
+	urls := repoRemote.Config().URLs
+	if len(urls) > 0 {
+		githubURL, err = gitutil.TrimGitURLPrefix(urls[0])
+		if err != nil {
+			return fmt.Errorf("failed to trim git URL prefix: %v", err)
+		}
+	}
+
+	// Now that we have the matched records, process and update FHIR files
+	if err := processDRSRecordsAndUpdateFHIR(collectRecs, LFSRecords, gitRecords, outPath, sc.GetGen3Interface().GetCredential().APIEndpoint, sc.GetProjectId(), rsID, githubURL, commitHash); err != nil {
 		return fmt.Errorf("failed to process DRS records: %v", err)
 	}
 
 	return nil
 }
 
-// getOrCreateRootDirectory ensures the root directory ("/") exists in DirectoryCache
-func getOrCreateRootDirectory() *Directory {
-	cleanPath := "/"
-	if dir, ok := DirectoryCache[cleanPath]; ok {
+// getOrCreateRootDirectory ensures the root directory (".") exists in DirectoryCache
+func getOrCreateRootDirectory(endpoint string, project string) *Directory {
+	// Root is stored as "." in cache keys to match filepath.Clean behavior
+	cacheKey := project + ":."
+	if dir, ok := DirectoryCache[cacheKey]; ok {
 		return dir
 	}
-	dirUUID := uuid.NewSHA1(DirectoryNamespaceUUID, []byte(cleanPath)).String()
+
+	// Canonical clean path to root is "." for internal logic
+	dirUUID := uuid.NewSHA1(uuid.NewSHA1(uuid.NameSpaceDNS, []byte(endpoint)), []byte(project+".")).String()
 	newDir := &Directory{
-		Name:         "/",
+		Name:         "/", // Display as "/"
 		Id:           dirUUID,
+		Path:         ".",
 		ResourceType: DIRECTORY_RESOURCE,
 		Child:        []*dtpb.Reference{},
 	}
-	DirectoryCache[cleanPath] = newDir
+	DirectoryCache[cacheKey] = newDir
 	return newDir
 }
 
@@ -145,16 +239,23 @@ func getResearchStudy(fhirDirectory string, projectId string, endpoint string, m
 			return "", fmt.Errorf("failed to read existing ResearchStudy file: %v", err)
 		}
 
+		lines := bytes.Split(jsonBytes, []byte{'\n'})
+		unmarshalBytes := jsonBytes
+		// If there is more than 1 line in the file, use the first line research study
+		if len(lines) > 0 && len(lines[0]) > 0 {
+			unmarshalBytes = lines[0]
+		}
+
 		// Try to unmarshal existing bytes into FHIR resource to get the ID (use unmarshaller)
-		cr, err := unmarshaller.UnmarshalR5(jsonBytes)
+		cr, err := unmarshaller.UnmarshalR5(unmarshalBytes)
 		if err != nil {
 			// If the protobuf unmarshaller fails, attempt to decode the plain JSON to find "id"
 			var tmp map[string]any
-			if err2 := json.Unmarshal(jsonBytes, &tmp); err2 == nil {
+			if err2 := json.Unmarshal(unmarshalBytes, &tmp); err2 == nil {
 				if idv, ok := tmp["id"].(string); ok && idv != "" {
 					// we have an ID but couldn't unmarshal via fhir unmarshaller; still inject rootDir
-					rootDir := getOrCreateRootDirectory()
-					newBytes, injErr := injectRootDir(jsonBytes, "Directory/"+rootDir.Id)
+					rootDir := getOrCreateRootDirectory(endpoint, projectId)
+					newBytes, injErr := injectRootDir(unmarshalBytes, "Directory/"+rootDir.Id)
 					if injErr != nil {
 						return "", injErr
 					}
@@ -171,12 +272,16 @@ func getResearchStudy(fhirDirectory string, projectId string, endpoint string, m
 		fmt.Printf("Loaded existing ResearchStudy from %s with ID %s\n", rsPath, rsID)
 
 		// inject or update rootDir in the existing JSON and write back
-		rootDir := getOrCreateRootDirectory()
-		newBytes, err := injectRootDir(jsonBytes, "Directory/"+rootDir.Id)
+		rootDir := getOrCreateRootDirectory(endpoint, projectId)
+		newFirstLineBytes, err := injectRootDir(unmarshalBytes, "Directory/"+rootDir.Id)
 		if err != nil {
 			return "", fmt.Errorf("failed to inject rootDir into existing ResearchStudy: %v", err)
 		}
-		if err := os.WriteFile(rsPath, append(newBytes, '\n'), 0644); err != nil {
+
+		lines[0] = newFirstLineBytes
+		contentToWrite := bytes.Join(lines, []byte{'\n'})
+
+		if err := os.WriteFile(rsPath, contentToWrite, 0644); err != nil {
 			return "", fmt.Errorf("error writing updated ResearchStudy file %s: %v", rsPath, err)
 		}
 		fmt.Printf("Updated ResearchStudy at %s with rootDir field\n", rsPath)
@@ -184,10 +289,10 @@ func getResearchStudy(fhirDirectory string, projectId string, endpoint string, m
 	}
 
 	// File does not exist: create a new ResearchStudy contained resource and inject rootDir
-	id := createIDFromStrings(endpoint, RESEARCH_STUDY, projectId, projectId)
+	id := createIDFromStrings(endpoint, RESEARCH_STUDY, projectId)
 
 	// Ensure root directory exists
-	rootDir := getOrCreateRootDirectory()
+	rootDir := getOrCreateRootDirectory(endpoint, projectId)
 
 	rs := &rspb.ResearchStudy{
 		Id: &dtpb.Id{Value: id},
@@ -234,11 +339,81 @@ func getResearchStudy(fhirDirectory string, projectId string, endpoint string, m
 	return id, nil
 }
 
+type LSFiles struct {
+	Files []LFSRecord `json:"files"`
+}
+
+type LFSRecord struct {
+	Name       string `json:"name"`
+	Size       int64  `json:"size"`
+	Checkout   bool   `json:"checkout"`
+	Downloaded bool   `json:"downloaded"`
+	OIDType    string `json:"oid_type"`
+	OID        string `json:"oid"`
+	Version    string `json:"version"`
+}
+
+// findLFSRecords runs ls-files and collects the results into struct
+func findLFSRecords() ([]LFSRecord, error) {
+	output, err := exec.Command("git-lfs", "ls-files", "--json").Output()
+	if err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			return nil, fmt.Errorf("command execution failed: %w\nstderr: %s", err, exitErr.Stderr)
+		}
+		return nil, fmt.Errorf("failed to run git-lfs command: %w", err)
+	}
+	var records LSFiles
+	if err := json.Unmarshal(output, &records); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal JSON output: %w", err)
+	}
+	return records.Files, nil
+}
+
+// findGitFiles runs git ls-tree and collects the results into struct
+func findGitFiles(repo *git.Repository) ([]LFSRecord, error) {
+	var records []LFSRecord
+
+	// Get the HEAD reference
+	ref, err := repo.Head()
+	if err != nil {
+		return nil, err
+	}
+
+	// Get the commit object
+	commit, err := repo.CommitObject(ref.Hash())
+	if err != nil {
+		return nil, err
+	}
+
+	// Get the tree from the commit
+	tree, err := commit.Tree()
+	if err != nil {
+		return nil, err
+	}
+
+	// Walk() is the direct replacement for 'ls-tree -r'
+	err = tree.Files().ForEach(func(f *object.File) error {
+		records = append(records, LFSRecord{
+			Name: f.Name,
+			Size: f.Size,
+		})
+		return nil
+	})
+
+	return records, err
+}
+
 // processDRSRecordsAndUpdateFHIR processes DRS records and updates FHIR NDJSON files with UPSERT operation.
-func processDRSRecordsAndUpdateFHIR(drsRecordsChan chan idxClient.ListRecordsResult, fhirDirectory string, endpoint string, project string, researchStudyID string) error {
+func processDRSRecordsAndUpdateFHIR(drsRecords []*drs.DRSObject, LfsRecords []LFSRecord, gitRecords []LFSRecord, fhirDirectory string, endpoint string, project string, researchStudyID string, githubURL string, commitHash string) error {
 	docRefFP := filepath.Join(fhirDirectory, DOCUMENT_RESOURCE+NDJSON_EXT)
-	dirRefFP := filepath.Join(fhirDirectory, DIRECTORY_RESOURCE+NDJSON_EXT) // New Directory file path
 	existingFHIRRecords := make(map[string]*cprb.ContainedResource)
+
+	// Maps for matching
+	existingByPath := make(map[string]*cprb.ContainedResource)
+	existingBySHA256 := make(map[string]*cprb.ContainedResource)
+
+	processedPaths := make(map[string]bool)
+	matchedDrsOids := make(map[string]bool)
 
 	marshaller, err := jsonformat.NewMarshaller(false, "", "", fver.R5)
 	if err != nil {
@@ -259,7 +434,17 @@ func processDRSRecordsAndUpdateFHIR(drsRecordsChan chan idxClient.ListRecordsRes
 		}
 	} else {
 		defer file.Close()
+
+		// Determine the best scanner buffer size based on actual file size
+		maxCapacity := 10 * 1024 * 1024 // 10MB default
+		if info, err := file.Stat(); err == nil && info.Size() > int64(maxCapacity) {
+			maxCapacity = int(info.Size())
+		}
+
 		scanner := bufio.NewScanner(file)
+		buf := make([]byte, 64*1024)
+		scanner.Buffer(buf, maxCapacity)
+
 		for scanner.Scan() {
 			line := scanner.Bytes()
 			if len(line) > 0 {
@@ -267,14 +452,79 @@ func processDRSRecordsAndUpdateFHIR(drsRecordsChan chan idxClient.ListRecordsRes
 					fmt.Printf("Invalid JSON in %s: %s. Skipping record.\n", docRefFP, string(line))
 					continue
 				}
-				dr, err := unmarshaller.UnmarshalR5(line)
+				// Robust unmarshal: Handle both wrapped (Gen3 style) and unwrapped (Raw FHIR) formats
+				var dr *cprb.ContainedResource
+				// Attempt to unmarshal line. UnmarshalR5 returns specifically what's in 'resourceType'
+				msg, err := unmarshaller.UnmarshalR5(line)
+				if err != nil || msg == nil {
+					// Fallback: Check for Gen3-wrapped record: {"documentReference": { ... }}
+					var m map[string]json.RawMessage
+					if err2 := json.Unmarshal(line, &m); err2 == nil {
+						if inner, ok := m["documentReference"]; ok {
+							msg, err = unmarshaller.UnmarshalR5(inner)
+						}
+					}
+				}
+
 				if err != nil {
-					fmt.Printf("Invalid FHIR record in %s: %v. Skipping record.\n", docRefFP, err)
+					snippet := string(line)
+					if len(snippet) > 80 {
+						snippet = snippet[:80] + "..."
+					}
+					fmt.Printf("Warning: Failed to unmarshal record in %s: %v. Skipping line: %s\n", docRefFP, err, snippet)
+					continue
+				}
+
+				// Safely normalize to *cprb.ContainedResource using an interface switch
+				switch m := (interface{})(msg).(type) {
+				case *cprb.ContainedResource:
+					dr = m
+				case *drpb.DocumentReference:
+					// Wrap raw DocumentReference into ContainedResource for consistent processing
+					dr = &cprb.ContainedResource{
+						OneofResource: &cprb.ContainedResource_DocumentReference{
+							DocumentReference: m,
+						},
+					}
+				default:
+					fmt.Printf("Warning: Skipping record in %s of unsupported type %T\n", docRefFP, msg)
 					continue
 				}
 				docRef := dr.GetDocumentReference()
 				if docRef != nil {
-					existingFHIRRecords[docRef.GetId().Value] = dr
+					id := docRef.GetId().Value
+					existingFHIRRecords[id] = dr
+
+					// Populate matching maps
+					if len(docRef.Content) > 0 && docRef.Content[0].GetAttachment() != nil {
+						path := docRef.Content[0].GetAttachment().GetTitle().GetValue()
+						if path != "" {
+							existingByPath[path] = dr
+						}
+
+						for _, ext := range docRef.Content[0].GetAttachment().GetExtension() {
+							if strings.HasSuffix(ext.GetUrl().GetValue(), "/checksum-sha256") {
+								if sha, ok := ext.GetValue().GetChoice().(*dtpb.Extension_ValueX_StringValue); ok {
+									existingBySHA256[sha.StringValue.Value] = dr
+								}
+							}
+						}
+
+						// Also match by file_sha256 in category codings
+						for _, cat := range docRef.Category {
+							for _, coding := range cat.Coding {
+								if coding.GetCode().GetValue() == "file_sha256" || coding.GetSystem().GetValue() == "https://humantumoratlas.org/file_sha256" {
+									sha := coding.GetDisplay().GetValue()
+									if sha == "" {
+										sha = cat.GetText().GetValue()
+									}
+									if sha != "" {
+										existingBySHA256[sha] = dr
+									}
+								}
+							}
+						}
+					}
 				}
 			}
 		}
@@ -283,40 +533,164 @@ func processDRSRecordsAndUpdateFHIR(drsRecordsChan chan idxClient.ListRecordsRes
 		}
 	}
 
-	count := 0
-	for drsRecord := range drsRecordsChan {
-		count++
-		if drsRecord.Error != nil {
-			return fmt.Errorf("error from record channel: %v", drsRecord.Error)
+	// Helper to merge records
+	mergeDocRef := func(existing, new *drpb.DocumentReference) {
+		existing.Status = new.Status
+		existing.DocStatus = new.DocStatus
+		existing.Date = new.Date
+
+		// Merge identifiers
+		existingIds := make(map[string]bool)
+		for _, id := range new.Identifier {
+			key := fmt.Sprintf("%s|%s", id.GetSystem().GetValue(), id.GetValue().GetValue())
+			existingIds[key] = true
 		}
-		containedResource := templateDocRef(drsRecord, endpoint, project, researchStudyID)
+		for _, id := range existing.Identifier {
+			key := fmt.Sprintf("%s|%s", id.GetSystem().GetValue(), id.GetValue().GetValue())
+			if !existingIds[key] {
+				new.Identifier = append(new.Identifier, id)
+			}
+		}
+		existing.Identifier = new.Identifier
+
+		if existing.Content != nil && new.Content != nil && len(existing.Content) > 0 && len(new.Content) > 0 {
+			existingAttachment := existing.Content[0].GetAttachment()
+			newAttachment := new.Content[0].GetAttachment()
+			existingAttachment.Creation = newAttachment.Creation
+			existingAttachment.Size = newAttachment.Size
+			existingAttachment.Title = newAttachment.Title
+
+			// Merge extensions
+			extMap := make(map[string]*dtpb.Extension)
+			for _, ext := range existingAttachment.Extension {
+				extMap[ext.GetUrl().GetValue()] = ext
+			}
+			for _, ext := range newAttachment.Extension {
+				extMap[ext.GetUrl().GetValue()] = ext
+			}
+			var mergedExt []*dtpb.Extension
+			for _, ext := range extMap {
+				mergedExt = append(mergedExt, ext)
+			}
+			existingAttachment.Extension = mergedExt
+			existingAttachment.Url = newAttachment.Url
+		} else if new.Content != nil {
+			existing.Content = new.Content
+		}
+
+		// Merge categories to preserve rich metadata (Assay, Level, file_sha256, etc.)
+		existingCatKeys := make(map[string]bool)
+		for _, cat := range existing.Category {
+			for _, coding := range cat.Coding {
+				key := fmt.Sprintf("%s|%s", coding.GetSystem().GetValue(), coding.GetCode().GetValue())
+				existingCatKeys[key] = true
+			}
+		}
+		for _, cat := range new.Category {
+			addCat := true
+			for _, coding := range cat.Coding {
+				key := fmt.Sprintf("%s|%s", coding.GetSystem().GetValue(), coding.GetCode().GetValue())
+				if existingCatKeys[key] {
+					addCat = false
+					break
+				}
+			}
+			if addCat {
+				existing.Category = append(existing.Category, cat)
+			}
+		}
+
+		existing.Subject = new.Subject
+	}
+
+	finalDocRefIDs := make(map[string]bool)
+
+	count := 0
+	for _, rec := range LfsRecords {
+		foundMatch := false
+		containedResource := &cprb.ContainedResource{}
+		for _, drsRecord := range drsRecords {
+			if drsRecord.Checksums.SHA256 == rec.OID {
+				drsRecord.Name = rec.Name
+				foundMatch = true
+				containedResource = templateDocRef(drsRecord, endpoint, project, researchStudyID)
+				processedPaths[rec.Name] = true
+				matchedDrsOids[drsRecord.Checksums.SHA256] = true
+			}
+
+			if foundMatch {
+				break
+			}
+		}
+		if !foundMatch {
+			continue
+		}
+
+		count++
 		fhirRecord := containedResource.GetDocumentReference()
 		recordID := fhirRecord.GetId().GetValue()
 
-		BuildDirectoryTreeFromDocRef(fhirRecord)
-		if existing := existingFHIRRecords[recordID].GetDocumentReference(); existing != nil {
-			// ... (Existing DocumentReference update/merge logic) ...
-			existing.Status = fhirRecord.Status
-			existing.DocStatus = fhirRecord.DocStatus
-			existing.Date = fhirRecord.Date
-			existing.Identifier = fhirRecord.Identifier
-			if existing.Content != nil && fhirRecord.Content != nil && len(existing.Content) > 0 && len(fhirRecord.Content) > 0 {
-				existingAttachment := existing.Content[0].GetAttachment()
-				newAttachment := fhirRecord.Content[0].GetAttachment()
-				existingAttachment.Creation = newAttachment.Creation
-				existingAttachment.Size = newAttachment.Size
-				existingAttachment.Title = newAttachment.Title
-				existingAttachment.Extension = newAttachment.Extension
-				existingAttachment.Url = newAttachment.Url
-			} else {
-				existing.Content = fhirRecord.Content
-			}
-			existing.Subject = fhirRecord.Subject
+		if existingCr, ok := existingByPath[rec.Name]; ok {
+			mergeDocRef(existingCr.GetDocumentReference(), fhirRecord)
+			finalDocRefIDs[existingCr.GetDocumentReference().GetId().Value] = true
+		} else if existingCr, ok := existingBySHA256[rec.OID]; ok {
+			// Content matched but path changed (rename)
+			mergeDocRef(existingCr.GetDocumentReference(), fhirRecord)
+			// Update the path in the attachment
+			existingCr.GetDocumentReference().Content[0].GetAttachment().Title = &dtpb.String{Value: rec.Name}
+			finalDocRefIDs[existingCr.GetDocumentReference().GetId().Value] = true
 		} else {
-			existingFHIRRecords[recordID] = containedResource
+			if existingCr, ok := existingFHIRRecords[recordID]; ok {
+				mergeDocRef(existingCr.GetDocumentReference(), fhirRecord)
+			} else {
+				existingFHIRRecords[recordID] = containedResource
+			}
+			finalDocRefIDs[recordID] = true
 		}
 	}
-	log.Printf("Processed %d records", count)
+
+	for _, rec := range gitRecords {
+		if processedPaths[rec.Name] {
+			continue // Already handled by LFS/DRS matching
+		}
+		// Also check if it's an LFS file (even if no DRS match)
+		isLFS := false
+		for _, lfs := range LfsRecords {
+			if lfs.Name == rec.Name {
+				isLFS = true
+				break
+			}
+		}
+		if isLFS {
+			continue // Skip LFS files that didn't match DRS records
+		}
+
+		if githubURL != "" && commitHash != "" {
+			containedResource := templateGitHubDocRef(rec.Name, rec.Size, endpoint, project, researchStudyID, githubURL, commitHash)
+			fhirRecord := containedResource.GetDocumentReference()
+			recordID := fhirRecord.GetId().GetValue()
+
+			if existingCr, ok := existingByPath[rec.Name]; ok {
+				mergeDocRef(existingCr.GetDocumentReference(), fhirRecord)
+				finalDocRefIDs[existingCr.GetDocumentReference().GetId().Value] = true
+			} else {
+				if existingCr, ok := existingFHIRRecords[recordID]; ok {
+					mergeDocRef(existingCr.GetDocumentReference(), fhirRecord)
+				} else {
+					existingFHIRRecords[recordID] = containedResource
+				}
+				finalDocRefIDs[recordID] = true
+			}
+			count++
+		}
+	}
+
+	if count == 0 {
+		log.Printf("WARNING: Processed 0 records. This means no matches were found between DRS objects on remote and local LFS files for project '%s'.", project)
+		log.Printf("Verify that project ID '%s' is correct and that files are indexed on the remote DRS server '%s'.", project, endpoint)
+	} else {
+		log.Printf("Processed %d records", count)
+	}
 
 	docRefFile, err := os.Create(docRefFP)
 	if err != nil {
@@ -325,7 +699,16 @@ func processDRSRecordsAndUpdateFHIR(drsRecordsChan chan idxClient.ListRecordsRes
 	}
 	defer docRefFile.Close()
 
+	// Reset DirectoryCache to rebuild the tree cleanly from the current ground-truth DocumentReferences.
+	// This ensures ghost directories from previous runs or bucket implementation details (like S3/GitHub web paths)
+	// are completely purged if they are no longer reachable from any actual logical record.
+	DirectoryCache = make(map[string]*Directory)
+
 	for recordID, record := range existingFHIRRecords {
+
+		// Rebuild directory tree for each final record
+		BuildDirectoryTreeFromDocRef(endpoint, project, record.GetDocumentReference())
+
 		jsonBytes, err := marshaller.Marshal(record)
 		if err != nil {
 			log.Printf("Error serializing record with id %s: %v. Skipping.", recordID, err)
@@ -340,8 +723,12 @@ func processDRSRecordsAndUpdateFHIR(drsRecordsChan chan idxClient.ListRecordsRes
 			break
 		}
 	}
+
+	// Directory children are already refreshed by BuildDirectoryTreeFromDocRef
+
 	log.Println("Finished writing all DocumentReference records.")
 
+	dirRefFP := filepath.Join(fhirDirectory, DIRECTORY_RESOURCE+NDJSON_EXT)
 	dirRefFile, err := os.Create(dirRefFP)
 	if err != nil {
 		log.Printf("Error creating Directory file %s: %v", dirRefFP, err)

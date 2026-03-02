@@ -1,47 +1,107 @@
-# Meta
+# Forge
 
-Metadata handling for CALPYR data platform
+FHIR metadata management for CALYPR Gen3 data repositories.
 
-## Workflow -- General Design Paramters
+Forge works alongside [git-drs](https://github.com/calypr/git-drs/blob/main/README.md) to generate and publish FHIR-compliant metadata, making your datasets discoverable on the CALYPR platform.
 
-This repo is designed to produce git hook commands that take care of metadata additions / subtractions that are run before or after certain git commands like commit and push. Draft workflow currently:
+## Quick Start
 
-## Example user workflow
+```bash
+# Verify your connection to CALYPR
+forge ping
 
+# Publish metadata to CALYPR
+forge publish ghp_your_github_token
+
+# Monitor the job
+forge list
+forge status <job-uid>
 ```
-git clone repo
-forge init -- exactly same as git-dirs init, just a wrapper around it
-git add files
-git commit -m "test" -- same as git-drs
-git push origin main -- same as git-dirs
-forge publish [github personal access token]
+
+## What Forge Does
+
+**1. Manage Project Metadata**
+- `forge publish` - Generate and upload metadata to CALYPR
+- `forge empty` - Remove project metadata
+- `forge meta` - Preview metadata locally
+- `forge validate` - Check metadata validity
+
+**2. Monitor Platform State**
+- `forge ping` - Check connection and credentials
+- `forge list` - View all processing jobs
+- `forge status` - Check specific job status
+- `forge output` - View job logs
+
+**3. Configure Portal Frontend**
+- `forge config` - Generate a CALYPR explorer template
+
+## Installation
+
+```bash
+git clone https://github.com/calypr/forge.git
+cd forge
+go build -o forge
+sudo mv forge /usr/local/bin/
 ```
 
-To generate a personal access token for a github repo check these docs:
-https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens
+## Prerequisites
 
-## Command descriptions
+- Git DRS installed and configured
+- Data files pushed to CALYPR via git-drs
+- Gen3 credentials (configured through git-drs)
+- GitHub Personal Access Token ([create token](https://github.com/settings/tokens))
 
-### ping
+## Documentation
 
-Same as ping in g3t
+- [Getting Started](docs/getting-started.md) - Setup and basic workflows
+- [Command Reference](docs/commands.md) - Detailed command documentation
+- [Configuration Guide](docs/configuration.md) - Git-drs configuration
+- [Metadata Structure](docs/metadata.md) - Understanding FHIR resources
 
-### meta
+## Example Workflow
 
-Generates metadata from non checked in .meta files. If .meta files are already checked in you can regen metadata with -r flag. This command is run as part of the pre-commit command
+```bash
+# Use git-drs to track and push files
+git lfs track "*.fastq.gz"
+git add data/sample.fastq.gz
+git commit -m "Add sequencing data"
+git push
 
-### validate
+# Publish metadata to CALYPR
+forge publish ghp_abc123def456
 
-Validates metadata against the jsonschema in grip
+# Monitor the job
+forge list
+# Uid: job-xyz789   Name: fhir_import_export   Status: Succeeded
+```
 
-### precommit
+## Support
 
-Runs meta init command then locates all .ndjson files in META directory and validates each file.
+Part of the CALYPR data commons ecosystem.
 
-### publish
+## Releasing
 
-Validates that your Personal Access token exists and is valid
-Packages together relevent information used to init the git repo in a remote job
-Kicks off a sower job to process the metadata files that you have just pushed up
+Forge uses [GoReleaser](https://goreleaser.com/) for automated builds and releases.
 
-No git hook for publish, users are expected to run that themselves.
+### Automated Releases
+Every merge to the `main` branch automatically:
+1. Creates a new patch version tag (e.g., `v0.1.5` -> `v0.1.6`).
+2. Builds binaries for macOS and Linux.
+3. Creates a GitHub Release with the compiled assets.
+
+To trigger a different version bump via the GitHub Action, include one of the following in your merge commit message:
+- `#major` for a major version bump.
+- `#minor` for a minor version bump.
+- `#patch` for a patch version bump.
+
+### Manual Tagging
+If you need to manually tag a version, use the provided helper script:
+```bash
+./bump-tag.sh --patch   # Increments v0.0.x
+./bump-tag.sh --minor   # Increments v0.x.0
+./bump-tag.sh --major   # Increments vx.0.0
+```
+Then push the tag to trigger the release workflow:
+```bash
+git push origin main --tags
+```

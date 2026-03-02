@@ -1,23 +1,39 @@
 package ping
 
 import (
+	"context"
 	"fmt"
 	"log"
 
-	"github.com/calypr/forge/client/fence"
+	"github.com/calypr/data-client/g3client"
+	"github.com/calypr/forge/client"
+	"github.com/calypr/forge/utils/remoteutil"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v2"
+)
+
+var (
+	pingRemote string
 )
 
 var PingCmd = &cobra.Command{
 	Use:   "ping",
 	Short: "Ping Calypr instance and return user's project and user permissions",
+	Args:  cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		FenceClient, err := fence.NewFenceClient()
+		remote, err := remoteutil.LoadRemoteOrDefault(pingRemote)
+		if err != nil {
+			return fmt.Errorf("could not locate remote: %w", err)
+		}
+		fmt.Printf("Using remote: %s\n", string(*remote))
+
+		sc, closer, err := client.NewGen3Client(*remote, g3client.WithClients(g3client.FenceClient))
 		if err != nil {
 			return err
 		}
-		resp, err := FenceClient.UserPing()
+		defer closer()
+
+		resp, err := sc.GetGen3Interface().Fence().UserPing(context.Background())
 		if err != nil {
 			return err
 		}
@@ -30,4 +46,8 @@ var PingCmd = &cobra.Command{
 
 		return nil
 	},
+}
+
+func init() {
+	PingCmd.Flags().StringVarP(&pingRemote, "remote", "r", "", "target DRS server (default: default_remote)")
 }

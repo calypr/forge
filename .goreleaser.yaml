@@ -1,0 +1,25 @@
+builds:
+  - binary: forge
+    main: ./main.go
+    goos:
+      - darwin
+      - linux
+    goarch:
+      - amd64
+      - arm64
+    env:
+      - CGO_ENABLED=0
+    ldflags:
+      - -X "github.com/calypr/forge/version.BuildDate={{.Date}}"
+      - -X "github.com/calypr/forge/version.GitCommit={{.ShortCommit}}"
+      - -X "github.com/calypr/forge/version.GitBranch={{.Branch}}"
+      - -X "github.com/calypr/forge/version.Version={{.Version}}"
+
+dist: build/release
+
+release:
+  draft: false
+
+archives:
+  - format: tar.gz
+    name_template: "{{.ProjectName}}-{{.Os}}-{{.Arch}}-{{.Version}}"

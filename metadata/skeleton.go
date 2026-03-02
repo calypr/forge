@@ -4,12 +4,12 @@ import (
 	"fmt"
 	"strings"
 
-	idxClient "github.com/calypr/git-drs/client"
-	"github.com/google/uuid"
+	"github.com/calypr/data-client/drs"
 	code "github.com/google/fhir/go/proto/google/fhir/proto/r5/core/codes_go_proto"
 	dtpb "github.com/google/fhir/go/proto/google/fhir/proto/r5/core/datatypes_go_proto"
 	cprb "github.com/google/fhir/go/proto/google/fhir/proto/r5/core/resources/bundle_and_contained_resource_go_proto"
 	drpb "github.com/google/fhir/go/proto/google/fhir/proto/r5/core/resources/document_reference_go_proto"
+	"github.com/google/uuid"
 )
 
 const (
@@ -19,9 +19,10 @@ const (
 	DOCUMENT_RESOURCE         = "DocumentReference"
 	DIRECTORY_RESOURCE        = "Directory"
 	DIR_ID_PREFIX             = DIRECTORY_RESOURCE + "/"
+	SOURCE_EXTENSION_URL      = "/fhir/StructureDefinition/source"
+	GITHUB_SOURCE             = "github"
+	S3_SOURCE                 = "s3"
 )
-
-var DirectoryNamespaceUUID = uuid.MustParse("e61f8f3c-8f2c-4b5c-8d19-9f7918f8f483")
 
 func CreateDocReferenceReference(resourceId string) *dtpb.Reference {
 	return &dtpb.Reference{
@@ -44,53 +45,61 @@ func CreateResourceReference(resourceId string) *dtpb.Reference {
 	}
 }
 
-func templateDocRef(metaStruc idxClient.ListRecordsResult, endpoint string, project string, rSID string) *cprb.ContainedResource {
-	obj := metaStruc.Record
+func templateDocRef(obj *drs.DRSObject, endpoint string, project string, rSID string) *cprb.ContainedResource {
+	id := uuid.NewSHA1(
+		uuid.NewSHA1(uuid.NameSpaceDNS, []byte(endpoint)),
+		fmt.Appendf(nil, "%s/%s", project, obj.Name),
+	).String()
 
-	// Create the extensions for hashes
 	var extensions []*dtpb.Extension
-	if obj.Hashes.MD5 != "" {
+	if obj.Checksums.MD5 != "" {
 		extensions = append(extensions, &dtpb.Extension{
 			Url: &dtpb.Uri{Value: endpoint + FHIR_STRUCTURE_DEFINITION + "/checksum-md5"},
 			Value: &dtpb.Extension_ValueX{
-				Choice: &dtpb.Extension_ValueX_StringValue{StringValue: &dtpb.String{Value: obj.Hashes.MD5}},
+				Choice: &dtpb.Extension_ValueX_StringValue{StringValue: &dtpb.String{Value: obj.Checksums.MD5}},
 			},
 		})
 	}
-	if obj.Hashes.SHA256 != "" {
+	if obj.Checksums.SHA256 != "" {
 		extensions = append(extensions, &dtpb.Extension{
 			Url: &dtpb.Uri{Value: "http://" + endpoint + FHIR_STRUCTURE_DEFINITION + "/checksum-sha256"},
 			Value: &dtpb.Extension_ValueX{
-				Choice: &dtpb.Extension_ValueX_StringValue{StringValue: &dtpb.String{Value: obj.Hashes.SHA256}},
+				Choice: &dtpb.Extension_ValueX_StringValue{StringValue: &dtpb.String{Value: obj.Checksums.SHA256}},
 			},
 		})
 	}
 
-	// Determine the URL for the attachment
+	extensions = append(extensions, &dtpb.Extension{
+		Url: &dtpb.Uri{Value: endpoint + SOURCE_EXTENSION_URL},
+		Value: &dtpb.Extension_ValueX{
+			Choice: &dtpb.Extension_ValueX_StringValue{StringValue: &dtpb.String{Value: S3_SOURCE}},
+		},
+	})
+
 	var url *dtpb.Url
-	if len(obj.URLs) > 0 {
-		url = &dtpb.Url{Value: obj.URLs[0]}
+	if len(obj.AccessMethods) > 0 {
+		// TODO: Big assumption here assuming that there exists only one url per FHIR attachment
+		url = &dtpb.Url{Value: obj.AccessMethods[0].AccessURL.URL}
 	}
 
-	// Create the DocumentReference
 	dr := &drpb.DocumentReference{
-		Id:        &dtpb.Id{Value: obj.Did},
+		Id:        &dtpb.Id{Value: id},
 		Status:    &drpb.DocumentReference_StatusCode{Value: code.DocumentReferenceStatusCode_CURRENT},
 		DocStatus: &drpb.DocumentReference_DocStatusCode{Value: code.CompositionStatusCode_FINAL},
-		Date:      parseFHIRInstantString(obj.CreatedDate),
+		Date:      parseFHIRInstantString(obj.CreatedTime),
 		Identifier: []*dtpb.Identifier{
 			{
 				Use:    &dtpb.Identifier_UseCode{Value: code.IdentifierUseCode_OFFICIAL},
 				System: &dtpb.Uri{Value: "http://" + endpoint + "/" + project},
-				Value:  &dtpb.String{Value: obj.Did},
+				Value:  &dtpb.String{Value: obj.Id},
 			},
 		},
 		Content: []*drpb.DocumentReference_Content{
 			{
 				Attachment: &dtpb.Attachment{
-					Creation:  parseFHIRDateTimeString(obj.CreatedDate),
+					Creation:  parseFHIRDateTimeString(obj.CreatedTime),
 					Size:      &dtpb.Integer64{Value: obj.Size},
-					Title:     &dtpb.String{Value: obj.FileName},
+					Title:     &dtpb.String{Value: obj.Name},
 					Extension: extensions,
 					Url:       url,
 				},
@@ -112,16 +121,72 @@ func templateDocRef(metaStruc idxClient.ListRecordsResult, endpoint string, proj
 	}
 }
 
-func createIDFromStrings(apiEndpoint string, resourceType string, projectID string, identifierString string) string {
+func templateGitHubDocRef(name string, size int64, endpoint string, project string, rSID string, githubURL string, commitHash string) *cprb.ContainedResource {
+	id := uuid.NewSHA1(
+		uuid.NewSHA1(uuid.NameSpaceDNS, []byte(endpoint)),
+		fmt.Appendf(nil, "%s/%s", project, name),
+	).String()
+
+	var extensions []*dtpb.Extension
+	extensions = append(extensions, &dtpb.Extension{
+		Url: &dtpb.Uri{Value: endpoint + SOURCE_EXTENSION_URL},
+		Value: &dtpb.Extension_ValueX{
+			Choice: &dtpb.Extension_ValueX_StringValue{StringValue: &dtpb.String{Value: GITHUB_SOURCE}},
+		},
+	})
+
+	// Construct repository link
+	// We use the /blob/<commit>/<file> format to link to the file in the web UI.
+	// This avoids exposing raw tokens in URLs and relies on the user's browser session for auth.
+	cleanURL := strings.TrimSuffix(githubURL, ".git")
+	fileURL := fmt.Sprintf("https://%s/blob/%s/%s", cleanURL, commitHash, name)
+
+	dr := &drpb.DocumentReference{
+		Id:        &dtpb.Id{Value: id},
+		Status:    &drpb.DocumentReference_StatusCode{Value: code.DocumentReferenceStatusCode_CURRENT},
+		DocStatus: &drpb.DocumentReference_DocStatusCode{Value: code.CompositionStatusCode_FINAL},
+		Identifier: []*dtpb.Identifier{
+			{
+				Use:    &dtpb.Identifier_UseCode{Value: code.IdentifierUseCode_OFFICIAL},
+				System: &dtpb.Uri{Value: "http://" + endpoint + "/" + project},
+				Value:  &dtpb.String{Value: name},
+			},
+		},
+		Content: []*drpb.DocumentReference_Content{
+			{
+				Attachment: &dtpb.Attachment{
+					Size:      &dtpb.Integer64{Value: size},
+					Title:     &dtpb.String{Value: name},
+					Extension: extensions,
+					Url:       &dtpb.Url{Value: fileURL},
+				},
+			},
+		},
+		Subject: &dtpb.Reference{
+			Reference: &dtpb.Reference_ResearchStudyId{
+				ResearchStudyId: &dtpb.ReferenceId{
+					Value: rSID,
+				},
+			},
+		},
+	}
+
+	return &cprb.ContainedResource{
+		OneofResource: &cprb.ContainedResource_DocumentReference{
+			DocumentReference: dr,
+		},
+	}
+}
+
+func createIDFromStrings(apiEndpoint string, resourceType string, projectID string) string {
 	// Use uuid.Nil as the namespace and the apiEndpoint string to create a consistent namespace UUID.
 	// This is necessary because `uuid.NewSHA1` requires a UUID namespace, not a string.
-	endpointNamespace := uuid.NewSHA1(uuid.Nil, []byte(apiEndpoint))
+	endpointNamespace := uuid.NewSHA1(uuid.NameSpaceDNS, []byte(apiEndpoint))
 
-	system := getSystem(apiEndpoint, identifierString, projectID)
-	nameString := fmt.Sprintf("%s/%s/%s|%s", projectID, resourceType, system, identifierString)
+	system := getSystem(apiEndpoint, resourceType, projectID)
 
 	// Generate the final UUID using the endpoint-specific namespace.
-	return uuid.NewSHA1(endpointNamespace, []byte(nameString)).String()
+	return uuid.NewSHA1(endpointNamespace, fmt.Appendf(nil, "%s/%s", projectID, system)).String()
 }
 
 func getSystem(apiEndpoint string, identifier string, projectID string) string {

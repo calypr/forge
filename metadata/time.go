@@ -11,7 +11,10 @@ func parseFHIRInstantString(dateStr string) *dtpb.Instant {
 	if err != nil {
 		return nil
 	}
-	return &dtpb.Instant{ValueUs: t.UnixMicro()}
+	return &dtpb.Instant{
+		ValueUs:   t.UnixMicro(),
+		Precision: dtpb.Instant_SECOND,
+	}
 }
 
 func parseFHIRDateTimeString(dateStr string) *dtpb.DateTime {
@@ -19,5 +22,8 @@ func parseFHIRDateTimeString(dateStr string) *dtpb.DateTime {
 	if err != nil {
 		return nil
 	}
-	return &dtpb.DateTime{ValueUs: t.UnixMicro()}
+	return &dtpb.DateTime{
+		ValueUs:   t.UnixMicro(),
+		Precision: dtpb.DateTime_SECOND,
+	}
 }
