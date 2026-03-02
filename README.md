@@ -78,3 +78,30 @@ forge list
 ## Support
 
 Part of the CALYPR data commons ecosystem.
+
+## Releasing
+
+Forge uses [GoReleaser](https://goreleaser.com/) for automated builds and releases.
+
+### Automated Releases
+Every merge to the `main` branch automatically:
+1. Creates a new patch version tag (e.g., `v0.1.5` -> `v0.1.6`).
+2. Builds binaries for macOS and Linux.
+3. Creates a GitHub Release with the compiled assets.
+
+To trigger a different version bump via the GitHub Action, include one of the following in your merge commit message:
+- `#major` for a major version bump.
+- `#minor` for a minor version bump.
+- `#patch` for a patch version bump.
+
+### Manual Tagging
+If you need to manually tag a version, use the provided helper script:
+```bash
+./bump-tag.sh --patch   # Increments v0.0.x
+./bump-tag.sh --minor   # Increments v0.x.0
+./bump-tag.sh --major   # Increments vx.0.0
+```
+Then push the tag to trigger the release workflow:
+```bash
+git push origin main --tags
+```

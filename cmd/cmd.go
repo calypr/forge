@@ -7,12 +7,14 @@ import (
 	"github.com/calypr/forge/cmd/ping"
 	"github.com/calypr/forge/cmd/publish"
 	"github.com/calypr/forge/cmd/validate"
+	"github.com/calypr/forge/version"
 	"github.com/spf13/cobra"
 )
 
 var RootCmd = &cobra.Command{
-	Use:   "forge",
-	Short: "A powerful command-line tool for project management.",
+	Use:     "forge",
+	Version: version.Version,
+	Short:   "A powerful command-line tool for project management.",
 	Long: `Forge is a versatile CLI application designed to streamline various
 development and project management tasks.`,
 	CompletionOptions: cobra.CompletionOptions{
