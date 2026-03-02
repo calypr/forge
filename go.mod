@@ -9,7 +9,7 @@ require (
 	github.com/bmeg/jsonschemagraph v0.0.4-0.20251017205345-236d2de9887c
 	github.com/bytedance/sonic v1.15.0
 	github.com/calypr/data-client v0.0.0-20260210235422-eab5bbef7b2f
-	github.com/calypr/gecko v0.0.0-20251110184938-909cb1b668e2
+	github.com/calypr/gecko v0.0.0-20260302173132-7377bcf34025
 	github.com/calypr/git-drs v0.5.15-0.20260211210513-751923a7310d
 	github.com/cockroachdb/errors v1.11.3
 	github.com/go-git/go-git/v5 v5.13.0
@@ -17,6 +17,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/hashicorp/go-multierror v1.1.1
 	github.com/spf13/cobra v1.10.2
+	github.com/vbauerster/mpb/v8 v8.11.2
 	gopkg.in/yaml.v2 v2.4.0
 )
 
@@ -92,14 +93,12 @@ require (
 	github.com/skeema/knownhosts v1.3.1 // indirect
 	github.com/spf13/pflag v1.0.10 // indirect
 	github.com/twitchyliquid64/golang-asm v0.15.1 // indirect
-	github.com/vbauerster/mpb/v8 v8.11.2 // indirect
 	github.com/xanzy/ssh-agent v0.3.3 // indirect
 	golang.org/x/arch v0.0.0-20210923205945-b76863e36670 // indirect
 	golang.org/x/crypto v0.42.0 // indirect
 	golang.org/x/exp v0.0.0-20240719175910-8a7402abbf56 // indirect
 	golang.org/x/net v0.45.0 // indirect
 	golang.org/x/oauth2 v0.34.0 // indirect
-	golang.org/x/sync v0.19.0 // indirect
 	golang.org/x/sys v0.39.0 // indirect
 	golang.org/x/term v0.36.0 // indirect
 	golang.org/x/text v0.29.0 // indirect

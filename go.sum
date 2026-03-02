@@ -76,10 +76,8 @@ github.com/bytedance/sonic/loader v0.5.0 h1:gXH3KVnatgY7loH5/TkeVyXPfESoqSBSBEiD
 github.com/bytedance/sonic/loader v0.5.0/go.mod h1:AR4NYCk5DdzZizZ5djGqQ92eEhCCcdf5x77udYiSJRo=
 github.com/calypr/data-client v0.0.0-20260210235422-eab5bbef7b2f h1:0ZEuhHT60jNs/LSMizPIc2Hmp3+GdgdNpdebAkAxk7E=
 github.com/calypr/data-client v0.0.0-20260210235422-eab5bbef7b2f/go.mod h1:S2doODN9ApF27gHEv4GIkdSwXIJl/7dSdkbwgiz5OMg=
-github.com/calypr/gecko v0.0.0-20251110184938-909cb1b668e2 h1:ii28j/rzbOaxpUVnONEMmDm7FyZy03qBcHFFSNRsCbQ=
-github.com/calypr/gecko v0.0.0-20251110184938-909cb1b668e2/go.mod h1:SJfHDSOaN5xevCor2PVRZxHHJ/WwfAnBBddgnQcUwJo=
-github.com/calypr/git-drs v0.5.15-0.20260211205724-aedb051e57d7 h1:gkLbZOcrDMm+ipBjA1eDScpwD1BqSYnEcc/fPev7y50=
-github.com/calypr/git-drs v0.5.15-0.20260211205724-aedb051e57d7/go.mod h1:JB/uWbSfKcApEjWfeZVD5sBYstPG9u9rNMlyFRizZHo=
+github.com/calypr/gecko v0.0.0-20260302173132-7377bcf34025 h1:c9BR/k3DUhKHkIN8KsbPjPfrn9/+U6PR07BXNoCgmZE=
+github.com/calypr/gecko v0.0.0-20260302173132-7377bcf34025/go.mod h1:WKaNib1r0OsANmuRi9LRGetSb+fKkc3pL0X3QPR0JOk=
 github.com/calypr/git-drs v0.5.15-0.20260211210513-751923a7310d h1:uYrc8i8e7HdpkgZ6THX4L7d/ddnudD0677X4Qjt1ztM=
 github.com/calypr/git-drs v0.5.15-0.20260211210513-751923a7310d/go.mod h1:JB/uWbSfKcApEjWfeZVD5sBYstPG9u9rNMlyFRizZHo=
 github.com/census-instrumentation/opencensus-proto v0.2.1/go.mod h1:f6KPmirojxKA12rnyqOA5BBL4O983OfeGPqjHWSTneU=
@@ -328,8 +326,6 @@ golang.org/x/sync v0.0.0-20181108010431-42b317875d0f/go.mod h1:RxMgew5VJxzue5/jJ
 golang.org/x/sync v0.0.0-20190423024810-112230192c58/go.mod h1:RxMgew5VJxzue5/jJTE5uejpjVlOe/izrB70Jof72aM=
 golang.org/x/sync v0.0.0-20190911185100-cd5d95a43a6e/go.mod h1:RxMgew5VJxzue5/jJTE5uejpjVlOe/izrB70Jof72aM=
 golang.org/x/sync v0.0.0-20201020160332-67f06af15bc9/go.mod h1:RxMgew5VJxzue5/jJTE5uejpjVlOe/izrB70Jof72aM=
-golang.org/x/sync v0.19.0 h1:vV+1eWNmZ5geRlYjzm2adRgW2/mcpevXNg50YZtPCE4=
-golang.org/x/sync v0.19.0/go.mod h1:9KTHXmSnoGruLpwFjVSX0lNNA75CykiMECbovNTZqGI=
 golang.org/x/sys v0.0.0-20180830151530-49385e6e1522/go.mod h1:STP8DvDyc/dI5b8T5hshtkjS+E42TnysNCUPdjciGhY=
 golang.org/x/sys v0.0.0-20190215142949-d0b11bdaac8a/go.mod h1:STP8DvDyc/dI5b8T5hshtkjS+E42TnysNCUPdjciGhY=
 golang.org/x/sys v0.0.0-20190412213103-97732733099d/go.mod h1:h1NjWce9XRLGQEsW7wpKNCjG9DtNlClVuFLEZdDNbEs=
