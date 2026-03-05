@@ -58,6 +58,12 @@ var CalyprSchema = `
 	      "items": {
 	        "$ref": "http://graph-fhir.io/schema/0.0.2/Reference"
 	      },
+	      "path": {
+            "type": "string",
+            "description": "The full POSIX path of the directory starting from the bucket or root.",
+            "title": "Full Path",
+            "element_property": true
+	       },
 	      "backref": "directory",
 	      "description": "a child directory of the current directory",
 	      "element_property": true,

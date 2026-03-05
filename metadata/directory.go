@@ -227,60 +227,10 @@ func BuildDirectoryTreeFromDocRef(endpoint string, project string, docRef *drpb.
 		return
 	}
 
-	rawTitle := docRef.Content[0].GetAttachment().GetTitle().GetValue()
-	rawURL := docRef.Content[0].GetAttachment().GetUrl().GetValue()
-
-	// Determine the source of the record (S3, GitHub, etc.)
-	source := ""
-	// Search through attachment extensions for the source field
-	for _, ext := range docRef.Content[0].GetAttachment().GetExtension() {
-		extURL := ext.GetUrl().GetValue()
-		// Match the source extension URL (handle both relative and absolute)
-		if strings.HasSuffix(extURL, SOURCE_EXTENSION_URL) {
-			source = ext.GetValue().GetStringValue().GetValue()
-			break
-		}
-	}
-
-	// Heuristic for logical path selection:
-	// 1. If Title contains slashes, it is our logical path (e.g., "data/foo.csv"). TRUST IT.
-	// 2. For GitHub files, Title IS the relative path. NEVER use URL fallback as it's a web path.
-	// 3. For others (S3/GDC), only use URL fallback if Title is flat AND URL follows a POSIX-like path.
-	//    BUT: Never use UUID-prefixed bucket paths (like GDC/TCGA mirrors) if they differ from logical intent.
-
-	posixPath := rawTitle
-	hasHierarchy := strings.Contains(posixPath, "/") || strings.Contains(posixPath, "\\")
-
-	// Strip schemes if Title was mis-set to a full URL
-	if strings.Contains(posixPath, "://") {
-		u, err := url.Parse(posixPath)
-		if err == nil && u.Path != "" {
-			posixPath = u.Path
-			hasHierarchy = strings.Contains(posixPath, "/") || strings.Contains(posixPath, "\\")
-		}
-	}
-
-	if source != GITHUB_SOURCE && !hasHierarchy {
-		// FALLBACK: Only for non-GitHub files where Title is flat (no slashes)
-		if strings.Contains(rawURL, "://") {
-			u, err := url.Parse(rawURL)
-			if err == nil && u.Path != "" {
-				urlPath := u.Path
-				// EXCLUSION: If the URL path is a storage hash path (UUID/Hash/Indexd-style), avoid it.
-				// We detect this by checking if the first component is a UUID or if it's "obviously" a storage path.
-				components := strings.Split(strings.Trim(urlPath, "/"), "/")
-				isLogical := true
-				if len(components) > 0 {
-					if _, err := uuid.Parse(components[0]); err == nil {
-						isLogical = false // It's a bucket path start (UUID)
-					}
-				}
-
-				if isLogical {
-					posixPath = urlPath
-				}
-			}
-		}
+	posixPath := logicalDocRefPath(docRef)
+	if posixPath == "" {
+		log.Printf("Skipping DocumentReference %s: no logical path available", docRef.GetId().GetValue())
+		return
 	}
 
 	// Standardize to relative path (no leading slash) for consistent caching
@@ -312,6 +262,134 @@ func BuildDirectoryTreeFromDocRef(endpoint string, project string, docRef *drpb.
 			parentDir.Child = append(parentDir.Child, fileRef)
 		}
 	}
+}
+
+func logicalDocRefPath(docRef *drpb.DocumentReference) string {
+	if docRef == nil || len(docRef.Content) == 0 || docRef.Content[0].GetAttachment() == nil {
+		return ""
+	}
+
+	attachment := docRef.Content[0].GetAttachment()
+	source := attachmentSource(attachment)
+	title := normalizeLogicalPath(attachment.GetTitle().GetValue())
+	titleHasHierarchy := strings.Contains(title, "/")
+
+	// Keep GitHub paths aligned with repository structure.
+	if source == GITHUB_SOURCE {
+		if title != "" {
+			return title
+		}
+		if raw := attachment.GetUrl().GetValue(); raw != "" {
+			if path := normalizeLogicalPath(raw); path != "" {
+				return path
+			}
+		}
+		return ""
+	}
+
+	// For S3 sources, prefer title when it already carries hierarchy.
+	if source == S3_SOURCE && titleHasHierarchy {
+		return title
+	}
+
+	// Prefer source_path extension when available.
+	for _, ext := range attachment.GetExtension() {
+		if !strings.HasSuffix(ext.GetUrl().GetValue(), SOURCE_PATH_EXTENSION_URL) {
+			continue
+		}
+		if raw := ext.GetValue().GetUrl().GetValue(); raw != "" {
+			if path := normalizeLogicalPath(raw); path != "" {
+				return path
+			}
+		}
+		if raw := ext.GetValue().GetUri().GetValue(); raw != "" {
+			if path := normalizeLogicalPath(raw); path != "" {
+				return path
+			}
+		}
+		if raw := ext.GetValue().GetStringValue().GetValue(); raw != "" {
+			if path := normalizeLogicalPath(raw); path != "" {
+				return path
+			}
+		}
+	}
+
+	if raw := attachment.GetUrl().GetValue(); raw != "" {
+		if path := normalizeLogicalPath(raw); path != "" {
+			return path
+		}
+	}
+
+	if title != "" {
+		return title
+	}
+
+	return ""
+}
+
+func attachmentSource(attachment *dtpb.Attachment) string {
+	for _, ext := range attachment.GetExtension() {
+		if strings.HasSuffix(ext.GetUrl().GetValue(), SOURCE_EXTENSION_URL) {
+			if v := ext.GetValue().GetStringValue().GetValue(); v != "" {
+				return strings.ToLower(strings.TrimSpace(v))
+			}
+		}
+	}
+	return ""
+}
+
+func normalizeLogicalPath(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+	}
+
+	if strings.Contains(raw, "://") {
+		parsed, err := url.Parse(raw)
+		if err != nil {
+			return cleanRelativePath(raw)
+		}
+
+		switch strings.ToLower(parsed.Scheme) {
+		case "s3":
+			// s3://bucket/key -> key
+			return cleanRelativePath(parsed.Path)
+		case "file":
+			// file:///bucket/key -> key
+			path := strings.TrimPrefix(parsed.Path, "/")
+			parts := strings.Split(path, "/")
+			if len(parts) > 1 {
+				path = strings.Join(parts[1:], "/")
+			}
+			return cleanRelativePath(path)
+		default:
+			path := strings.TrimPrefix(parsed.Path, "/")
+			parts := strings.Split(path, "/")
+			// https://github.com/org/repo/blob/<sha>/path/to/file -> path/to/file
+			for i, p := range parts {
+				if p == "blob" && i+2 < len(parts) {
+					return cleanRelativePath(strings.Join(parts[i+2:], "/"))
+				}
+			}
+			// For generic HTTP(S) URLs, avoid using storage-like paths as directory keys.
+			return ""
+		}
+	}
+
+	return cleanRelativePath(raw)
+}
+
+func cleanRelativePath(path string) string {
+	path = strings.TrimSpace(path)
+	path = strings.TrimPrefix(path, "/")
+	if path == "" {
+		return ""
+	}
+	clean := filepath.Clean(path)
+	if clean == "." {
+		return ""
+	}
+	return clean
 }
 
 // RefreshDirectoryChildren removes stale DocumentReference links from all directories in the cache.

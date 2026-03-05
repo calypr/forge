@@ -497,9 +497,13 @@ func processDRSRecordsAndUpdateFHIR(drsRecords []*drs.DRSObject, LfsRecords []LF
 
 					// Populate matching maps
 					if len(docRef.Content) > 0 && docRef.Content[0].GetAttachment() != nil {
-						path := docRef.Content[0].GetAttachment().GetTitle().GetValue()
+						path := logicalDocRefPath(docRef)
 						if path != "" {
 							existingByPath[path] = dr
+						}
+						title := docRef.Content[0].GetAttachment().GetTitle().GetValue()
+						if title != "" {
+							existingByPath[title] = dr
 						}
 
 						for _, ext := range docRef.Content[0].GetAttachment().GetExtension() {

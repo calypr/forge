@@ -72,10 +72,10 @@ func TestBuildDirectoryTreeFromDocRef(t *testing.T) {
 
 	BuildDirectoryTreeFromDocRef(endpoint, "test-project", docRef)
 
-	// Path /data should exist
-	dir, ok := DirectoryCache["test-project:/data"]
+	// Path data should exist
+	dir, ok := DirectoryCache["test-project:data"]
 	if !ok {
-		t.Fatal("/data not found in cache")
+		t.Fatal("data not found in cache")
 	}
 
 	foundDoc := false
@@ -87,6 +87,54 @@ func TestBuildDirectoryTreeFromDocRef(t *testing.T) {
 	}
 	if !foundDoc {
 		t.Error("document-1 not found in /data children")
+	}
+}
+
+func TestBuildDirectoryTreeFromDocRefUsesBucketStrippedSourcePath(t *testing.T) {
+	resetCache()
+	endpoint := "localhost"
+	docRef := &drpb.DocumentReference{
+		Id: &dtpb.Id{Value: "doc-2"},
+		Content: []*drpb.DocumentReference_Content{
+			{
+				Attachment: &dtpb.Attachment{
+					Title: &dtpb.String{Value: "clusters.csv"},
+					Url:   &dtpb.Url{Value: "file:///bforepc-prod/OHSU/koei_chin/visium_hd/4-R3/outs/analysis/clustering/clusters.csv"},
+					Extension: []*dtpb.Extension{
+						{
+							Url: &dtpb.Uri{Value: "http://aced-idp.org/fhir/StructureDefinition/source_path"},
+							Value: &dtpb.Extension_ValueX{
+								Choice: &dtpb.Extension_ValueX_Url{
+									Url: &dtpb.Url{Value: "s3://bforepc-prod/OHSU/koei_chin/visium_hd/4-R3/outs/analysis/clustering/clusters.csv"},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	BuildDirectoryTreeFromDocRef(endpoint, "test-project", docRef)
+
+	if _, exists := DirectoryCache["test-project:bforepc-prod"]; exists {
+		t.Fatal("bucket segment should not be included in directory path")
+	}
+
+	dir, ok := DirectoryCache["test-project:OHSU/koei_chin/visium_hd/4-R3/outs/analysis/clustering"]
+	if !ok {
+		t.Fatal("expected bucket-stripped source path directory was not created")
+	}
+
+	foundDoc := false
+	for _, child := range dir.Child {
+		if child.GetDocumentReferenceId().Value == "doc-2" {
+			foundDoc = true
+			break
+		}
+	}
+	if !foundDoc {
+		t.Error("document-2 not found in derived directory children")
 	}
 }
 

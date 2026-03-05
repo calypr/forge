@@ -20,6 +20,7 @@ const (
 	DIRECTORY_RESOURCE        = "Directory"
 	DIR_ID_PREFIX             = DIRECTORY_RESOURCE + "/"
 	SOURCE_EXTENSION_URL      = "/fhir/StructureDefinition/source"
+	SOURCE_PATH_EXTENSION_URL = "/fhir/StructureDefinition/source_path"
 	GITHUB_SOURCE             = "github"
 	S3_SOURCE                 = "s3"
 )
@@ -46,6 +47,7 @@ func CreateResourceReference(resourceId string) *dtpb.Reference {
 }
 
 func templateDocRef(obj *drs.DRSObject, endpoint string, project string, rSID string) *cprb.ContainedResource {
+	baseEndpoint := normalizeEndpoint(endpoint)
 	id := uuid.NewSHA1(
 		uuid.NewSHA1(uuid.NameSpaceDNS, []byte(endpoint)),
 		fmt.Appendf(nil, "%s/%s", project, obj.Name),
@@ -54,7 +56,7 @@ func templateDocRef(obj *drs.DRSObject, endpoint string, project string, rSID st
 	var extensions []*dtpb.Extension
 	if obj.Checksums.MD5 != "" {
 		extensions = append(extensions, &dtpb.Extension{
-			Url: &dtpb.Uri{Value: endpoint + FHIR_STRUCTURE_DEFINITION + "/checksum-md5"},
+			Url: &dtpb.Uri{Value: baseEndpoint + FHIR_STRUCTURE_DEFINITION + "/checksum-md5"},
 			Value: &dtpb.Extension_ValueX{
 				Choice: &dtpb.Extension_ValueX_StringValue{StringValue: &dtpb.String{Value: obj.Checksums.MD5}},
 			},
@@ -62,7 +64,7 @@ func templateDocRef(obj *drs.DRSObject, endpoint string, project string, rSID st
 	}
 	if obj.Checksums.SHA256 != "" {
 		extensions = append(extensions, &dtpb.Extension{
-			Url: &dtpb.Uri{Value: "http://" + endpoint + FHIR_STRUCTURE_DEFINITION + "/checksum-sha256"},
+			Url: &dtpb.Uri{Value: baseEndpoint + FHIR_STRUCTURE_DEFINITION + "/checksum-sha256"},
 			Value: &dtpb.Extension_ValueX{
 				Choice: &dtpb.Extension_ValueX_StringValue{StringValue: &dtpb.String{Value: obj.Checksums.SHA256}},
 			},
@@ -70,7 +72,7 @@ func templateDocRef(obj *drs.DRSObject, endpoint string, project string, rSID st
 	}
 
 	extensions = append(extensions, &dtpb.Extension{
-		Url: &dtpb.Uri{Value: endpoint + SOURCE_EXTENSION_URL},
+		Url: &dtpb.Uri{Value: baseEndpoint + SOURCE_EXTENSION_URL},
 		Value: &dtpb.Extension_ValueX{
 			Choice: &dtpb.Extension_ValueX_StringValue{StringValue: &dtpb.String{Value: S3_SOURCE}},
 		},
@@ -90,7 +92,7 @@ func templateDocRef(obj *drs.DRSObject, endpoint string, project string, rSID st
 		Identifier: []*dtpb.Identifier{
 			{
 				Use:    &dtpb.Identifier_UseCode{Value: code.IdentifierUseCode_OFFICIAL},
-				System: &dtpb.Uri{Value: "http://" + endpoint + "/" + project},
+				System: &dtpb.Uri{Value: baseEndpoint + "/" + project},
 				Value:  &dtpb.String{Value: obj.Id},
 			},
 		},
@@ -122,6 +124,7 @@ func templateDocRef(obj *drs.DRSObject, endpoint string, project string, rSID st
 }
 
 func templateGitHubDocRef(name string, size int64, endpoint string, project string, rSID string, githubURL string, commitHash string) *cprb.ContainedResource {
+	baseEndpoint := normalizeEndpoint(endpoint)
 	id := uuid.NewSHA1(
 		uuid.NewSHA1(uuid.NameSpaceDNS, []byte(endpoint)),
 		fmt.Appendf(nil, "%s/%s", project, name),
@@ -129,7 +132,7 @@ func templateGitHubDocRef(name string, size int64, endpoint string, project stri
 
 	var extensions []*dtpb.Extension
 	extensions = append(extensions, &dtpb.Extension{
-		Url: &dtpb.Uri{Value: endpoint + SOURCE_EXTENSION_URL},
+		Url: &dtpb.Uri{Value: baseEndpoint + SOURCE_EXTENSION_URL},
 		Value: &dtpb.Extension_ValueX{
 			Choice: &dtpb.Extension_ValueX_StringValue{StringValue: &dtpb.String{Value: GITHUB_SOURCE}},
 		},
@@ -148,7 +151,7 @@ func templateGitHubDocRef(name string, size int64, endpoint string, project stri
 		Identifier: []*dtpb.Identifier{
 			{
 				Use:    &dtpb.Identifier_UseCode{Value: code.IdentifierUseCode_OFFICIAL},
-				System: &dtpb.Uri{Value: "http://" + endpoint + "/" + project},
+				System: &dtpb.Uri{Value: baseEndpoint + "/" + project},
 				Value:  &dtpb.String{Value: name},
 			},
 		},
@@ -197,4 +200,12 @@ func getSystem(apiEndpoint string, identifier string, projectID string) string {
 		return strings.Split(identifier, "|")[0]
 	}
 	return fmt.Sprintf("%s/%s", apiEndpoint, projectID)
+}
+
+func normalizeEndpoint(endpoint string) string {
+	trimmed := strings.TrimSuffix(strings.TrimSpace(endpoint), "/")
+	if strings.Contains(trimmed, "://") {
+		return trimmed
+	}
+	return "http://" + trimmed
 }
