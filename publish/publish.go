@@ -2,6 +2,7 @@ package publish
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -68,9 +69,10 @@ func RunPublish(token string, profile config.Remote) (*sower.StatusResp, error) 
 		return nil, err
 	}
 
-	// Determine the correct GitHub API endpoint and validate the token
+	// Determine the correct GitHub API endpoint and validate the token.
+	// We use this call to also retrieve the actual username (login) associated with the token.
 	apiEndpoint := getGitHubAPIEndpoint(url)
-	err = checkGHPAccessToken(token, apiEndpoint)
+	username, err := checkGHPAccessToken(token, apiEndpoint)
 	if err != nil {
 		return nil, err
 	}
@@ -81,10 +83,6 @@ func RunPublish(token string, profile config.Remote) (*sower.StatusResp, error) 
 		return nil, fmt.Errorf("pre-publish validation failed: %w", err)
 	}
 
-	username, err := gitutil.GetGlobalUserIdentity()
-	if err != nil {
-		return nil, fmt.Errorf("Unable to read global git config to get username: %s", err)
-	}
 	hash, err := gitutil.GetLastLocalCommit(repo)
 	if err != nil {
 		return nil, err
@@ -146,32 +144,41 @@ func RunPublish(token string, profile config.Remote) (*sower.StatusResp, error) 
 	return resp, nil
 }
 
-func checkGHPAccessToken(token string, apiEndpoint string) error {
+func checkGHPAccessToken(token string, apiEndpoint string) (string, error) {
 	req, err := http.NewRequest(http.MethodGet, apiEndpoint, nil)
 	if err != nil {
-		return fmt.Errorf("Error creating request: %s\n", err)
+		return "", fmt.Errorf("Error creating request: %s\n", err)
 	}
 	req.Header.Set("Authorization", "token "+token)
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
-		return fmt.Errorf("Error sending request: %s\n", err)
+		return "", fmt.Errorf("Error sending request: %s\n", err)
 	}
 
 	defer resp.Body.Close()
-	_, err = io.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return fmt.Errorf("Error reading response body: %s\n", err)
+		return "", fmt.Errorf("Error reading response body: %s\n", err)
 	}
 
 	if resp.StatusCode == http.StatusOK {
-		return nil
+		var user struct {
+			Login string `json:"login"`
+		}
+		if err := json.Unmarshal(body, &user); err != nil {
+			return "", fmt.Errorf("Error parsing user info: %s\n", err)
+		}
+		if user.Login == "" {
+			return "", fmt.Errorf("Could not find 'login' field in user info response")
+		}
+		return user.Login, nil
 	} else if resp.StatusCode == http.StatusUnauthorized {
-		return fmt.Errorf("Error: The personal access token is invalid or expired.")
+		return "", fmt.Errorf("Error: The personal access token is invalid or expired.")
 	} else if resp.StatusCode == http.StatusForbidden {
-		return fmt.Errorf("\nError: The personal access token is valid, but lacks the necessary permissions (scopes) to access this resource.")
+		return "", fmt.Errorf("\nError: The personal access token is valid, but lacks the necessary permissions (scopes) to access this resource.")
 	} else {
-		return fmt.Errorf("\nUnexpected response status: %d\n", resp.StatusCode)
+		return "", fmt.Errorf("\nUnexpected response status: %d\n", resp.StatusCode)
 	}
 }
 

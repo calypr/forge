@@ -51,19 +51,25 @@ func GetGlobalUserIdentity() (string, error) {
 func TrimGitURLPrefix(rawURL string) (string, error) {
 	trimmedURL := rawURL
 
-	// 1. Strip protocol if present (http, https, git, ssh, git+ssh)
-	prefixes := []string{"https://", "http://", "git://", "ssh://", "git+ssh://"}
-	for _, prefix := range prefixes {
-		if strings.HasPrefix(trimmedURL, prefix) {
-			trimmedURL = strings.TrimPrefix(trimmedURL, prefix)
-			break
+	// 1. Strip protocol if present; look for "://" and strip everything before and including it.
+	if idx := strings.Index(trimmedURL, "://"); idx != -1 {
+		trimmedURL = trimmedURL[idx+len("://"):]
+	} else {
+		// Fallback for git:// protocol or similar that might be missed
+		prefixes := []string{"git://", "ssh://", "git+ssh://"}
+		for _, prefix := range prefixes {
+			if strings.HasPrefix(trimmedURL, prefix) {
+				trimmedURL = strings.TrimPrefix(trimmedURL, prefix)
+				break
+			}
 		}
 	}
 
-	// 2. Strip user info if present (anything before the LAST @)
-	// This handles standard "user:pass@host" and custom "user/token@host"
-	if idx := strings.LastIndex(trimmedURL, "@"); idx != -1 {
-		trimmedURL = trimmedURL[idx+1:]
+	// 2. Strip user info / credentials
+	// We look for the LAST '@' to avoid issues with hostnames containing '@' (unlikely but possible)
+	// OR the FIRST '/' if no '@' is found, as some environments use 'user/token@host'
+	if atIdx := strings.LastIndex(trimmedURL, "@"); atIdx != -1 {
+		trimmedURL = trimmedURL[atIdx+1:]
 	}
 
 	// 3. Handle SSH-style "host:path/to/repo" by converting to "host/path/to/repo"
