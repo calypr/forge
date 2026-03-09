@@ -3,7 +3,6 @@ package cmd
 import (
 	"github.com/calypr/forge/cmd/config"
 	"github.com/calypr/forge/cmd/empty"
-	indexdfix "github.com/calypr/forge/cmd/indexd_fix"
 	"github.com/calypr/forge/cmd/meta"
 	"github.com/calypr/forge/cmd/ping"
 	"github.com/calypr/forge/cmd/publish"
@@ -32,7 +31,6 @@ func init() {
 	RootCmd.AddCommand(publish.ListCmd)
 	RootCmd.AddCommand(publish.StatusCmd)
 	RootCmd.AddCommand(publish.OutputCmd)
-	RootCmd.AddCommand(indexdfix.IndexdFixCmd)
 
 	validate.ValidateParentCmd.AddCommand(validate.ValidateConfigCmd)
 	validate.ValidateParentCmd.AddCommand(validate.ValidateDataCmd)
