@@ -10,7 +10,7 @@ require (
 	github.com/bytedance/sonic v1.15.0
 	github.com/calypr/data-client v0.0.0-20260210235422-eab5bbef7b2f
 	github.com/calypr/gecko v0.0.0-20260302173132-7377bcf34025
-	github.com/calypr/git-drs v0.5.15-0.20260211210513-751923a7310d
+	github.com/calypr/git-drs v0.5.15-0.20260309214953-9f29810405f5
 	github.com/cockroachdb/errors v1.11.3
 	github.com/go-git/go-git/v5 v5.13.0
 	github.com/google/fhir/go v0.7.5-0.20250925033537-1f5b5b9427ff
@@ -58,6 +58,7 @@ require (
 	github.com/cockroachdb/redact v1.1.5 // indirect
 	github.com/cyphar/filepath-securejoin v0.4.1 // indirect
 	github.com/emirpasic/gods v1.18.1 // indirect
+	github.com/fatih/color v1.17.0 // indirect
 	github.com/fsnotify/fsnotify v1.7.0 // indirect
 	github.com/getsentry/sentry-go v0.28.1 // indirect
 	github.com/go-git/gcfg v1.5.1-0.20230307220236-3a3c6141e376 // indirect
@@ -81,6 +82,8 @@ require (
 	github.com/kr/pretty v0.3.1 // indirect
 	github.com/kr/text v0.2.0 // indirect
 	github.com/logrusorgru/aurora v2.0.3+incompatible // indirect
+	github.com/mattn/go-colorable v0.1.13 // indirect
+	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/mattn/go-runewidth v0.0.19 // indirect
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
 	github.com/modern-go/reflect2 v1.0.2 // indirect
@@ -99,6 +102,7 @@ require (
 	golang.org/x/exp v0.0.0-20240719175910-8a7402abbf56 // indirect
 	golang.org/x/net v0.45.0 // indirect
 	golang.org/x/oauth2 v0.34.0 // indirect
+	golang.org/x/sync v0.19.0 // indirect
 	golang.org/x/sys v0.39.0 // indirect
 	golang.org/x/term v0.36.0 // indirect
 	golang.org/x/text v0.29.0 // indirect

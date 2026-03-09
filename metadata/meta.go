@@ -507,7 +507,8 @@ func processDRSRecordsAndUpdateFHIR(drsRecords []*drs.DRSObject, LfsRecords []LF
 						}
 
 						for _, ext := range docRef.Content[0].GetAttachment().GetExtension() {
-							if strings.HasSuffix(ext.GetUrl().GetValue(), "/checksum-sha256") {
+							url := ext.GetUrl().GetValue()
+							if strings.HasSuffix(url, "/checksum-sha256") || strings.HasSuffix(url, "/sha256") {
 								if sha, ok := ext.GetValue().GetChoice().(*dtpb.Extension_ValueX_StringValue); ok {
 									existingBySHA256[sha.StringValue.Value] = dr
 								}
