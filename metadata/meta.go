@@ -544,19 +544,23 @@ func processDRSRecordsAndUpdateFHIR(drsRecords []*drs.DRSObject, LfsRecords []LF
 		existing.DocStatus = new.DocStatus
 		existing.Date = new.Date
 
-		// Merge identifiers
-		existingIds := make(map[string]bool)
+		// Merge identifiers: Deduplicate by System to ensure the primary Indexd GUID
+		// (from the template) replaces any stale identifiers on the same project system.
+		existingSystems := make(map[string]bool)
+		var mergedIdentifiers []*dtpb.Identifier
 		for _, id := range new.Identifier {
-			key := fmt.Sprintf("%s|%s", id.GetSystem().GetValue(), id.GetValue().GetValue())
-			existingIds[key] = true
+			mergedIdentifiers = append(mergedIdentifiers, id)
+			existingSystems[id.GetSystem().GetValue()] = true
 		}
+
+		// Keep existing identifiers only if their system isn't already covered by 'new'
 		for _, id := range existing.Identifier {
-			key := fmt.Sprintf("%s|%s", id.GetSystem().GetValue(), id.GetValue().GetValue())
-			if !existingIds[key] {
-				new.Identifier = append(new.Identifier, id)
+			if !existingSystems[id.GetSystem().GetValue()] {
+				mergedIdentifiers = append(mergedIdentifiers, id)
+				existingSystems[id.GetSystem().GetValue()] = true
 			}
 		}
-		existing.Identifier = new.Identifier
+		existing.Identifier = mergedIdentifiers
 
 		if existing.Content != nil && new.Content != nil && len(existing.Content) > 0 && len(new.Content) > 0 {
 			existingAttachment := existing.Content[0].GetAttachment()
@@ -583,29 +587,34 @@ func processDRSRecordsAndUpdateFHIR(drsRecords []*drs.DRSObject, LfsRecords []LF
 			existing.Content = new.Content
 		}
 
-		// Merge categories to preserve rich metadata (Assay, Level, file_sha256, etc.)
-		existingCatKeys := make(map[string]bool)
-		for _, cat := range existing.Category {
-			for _, coding := range cat.Coding {
-				key := fmt.Sprintf("%s|%s", coding.GetSystem().GetValue(), coding.GetCode().GetValue())
-				existingCatKeys[key] = true
-			}
-		}
+		// Merge categories: If 'new' has a category for a specific system/code, it replaces the existing one.
+		newCatKeys := make(map[string]bool)
 		for _, cat := range new.Category {
-			addCat := true
 			for _, coding := range cat.Coding {
 				key := fmt.Sprintf("%s|%s", coding.GetSystem().GetValue(), coding.GetCode().GetValue())
-				if existingCatKeys[key] {
-					addCat = false
-					break
-				}
-			}
-			if addCat {
-				existing.Category = append(existing.Category, cat)
+				newCatKeys[key] = true
 			}
 		}
 
-		existing.Subject = new.Subject
+		var mergedCategories []*dtpb.CodeableConcept
+		// Start with 'new' categories
+		mergedCategories = append(mergedCategories, new.Category...)
+
+		// Add 'existing' categories only if they don't collision with 'new'
+		for _, cat := range existing.Category {
+			keep := true
+			for _, coding := range cat.Coding {
+				key := fmt.Sprintf("%s|%s", coding.GetSystem().GetValue(), coding.GetCode().GetValue())
+				if newCatKeys[key] {
+					keep = false
+					break
+				}
+			}
+			if keep {
+				mergedCategories = append(mergedCategories, cat)
+			}
+		}
+		existing.Category = mergedCategories
 	}
 
 	finalDocRefIDs := make(map[string]bool)
