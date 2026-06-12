@@ -4,30 +4,25 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/calypr/data-client/g3client"
+	"github.com/calypr/calypr-cli/g3client"
 	"github.com/calypr/forge/client"
 	"github.com/calypr/forge/publish"
-	"github.com/calypr/forge/utils/remoteutil"
 	"github.com/spf13/cobra"
 )
 
 var (
-	publishRemote string
+	publishGitRemote string
 )
 
 var PublishCmd = &cobra.Command{
-	Use:   "publish <github_personal_access_token>",
+	Use:   "publish <profile> <github_personal_access_token>",
 	Short: "create metadata upload job for FHIR ndjson files",
 	Long:  `The 'publish' command is how metadata is handled in calypr.`,
-	Args:  cobra.ExactArgs(1),
+	Args:  cobra.ExactArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		remote, err := remoteutil.LoadRemoteOrDefault(publishRemote)
-		if err != nil {
-			return fmt.Errorf("could not locate remote: %w", err)
-		}
-		fmt.Printf("Using remote: %s\n", string(*remote))
+		fmt.Printf("Using profile: %s\n", args[0])
 
-		resp, err := publish.RunPublish(args[0], *remote)
+		resp, err := publish.RunPublish(args[1], args[0], publishGitRemote)
 		if err != nil {
 			return err
 		}
@@ -37,27 +32,26 @@ var PublishCmd = &cobra.Command{
 }
 
 var (
-	listRemote string
+	listGitRemote string
 )
 
 var ListCmd = &cobra.Command{
-	Use:   "list",
+	Use:   "list <profile>",
 	Short: "view all of the jobs currently catalogued in sower",
 	Long:  `The 'list' command is how jobs are displayed to the user`,
-	Args:  cobra.NoArgs,
+	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		remote, err := remoteutil.LoadRemoteOrDefault(listRemote)
-		if err != nil {
-			return fmt.Errorf("could not locate remote: %w", err)
+		fmt.Printf("Using profile: %s\n", args[0])
+		if listGitRemote != "" {
+			fmt.Printf("Using git remote: %s\n", listGitRemote)
 		}
-		fmt.Printf("Using remote: %s\n", string(*remote))
 
-		sc, closer, err := client.NewGen3Client(*remote, g3client.WithClients(g3client.SowerClient, g3client.FenceClient))
+		sc, closer, err := client.NewGen3Client(args[0], g3client.WithClients(g3client.SowerClient, g3client.FenceClient))
 		if err != nil {
 			return err
 		}
 		defer closer()
-		vals, err := sc.GetGen3Interface().Sower().List(context.Background())
+		vals, err := sc.Gen3.SowerClient().List(context.Background())
 		if err != nil {
 			return fmt.Errorf("unable to list jobs: %w", err)
 		}
@@ -74,29 +68,28 @@ var ListCmd = &cobra.Command{
 }
 
 var (
-	statusRemote string
+	statusGitRemote string
 )
 
 var StatusCmd = &cobra.Command{
-	Use:   "status <UID>",
+	Use:   "status <profile> <UID>",
 	Short: "view the status of a specific job on sower",
 	Long: `The 'status' command is how sower job status is communicated to the user.
 	A specific job's UID can be found from running the list command`,
-	Args: cobra.ExactArgs(1),
+	Args: cobra.ExactArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		remote, err := remoteutil.LoadRemoteOrDefault(statusRemote)
-		if err != nil {
-			return fmt.Errorf("could not locate remote: %w", err)
+		fmt.Printf("Using profile: %s\n", args[0])
+		if statusGitRemote != "" {
+			fmt.Printf("Using git remote: %s\n", statusGitRemote)
 		}
-		fmt.Printf("Using remote: %s\n", string(*remote))
 
-		sc, closer, err := client.NewGen3Client(*remote, g3client.WithClients(g3client.SowerClient, g3client.FenceClient))
+		sc, closer, err := client.NewGen3Client(args[0], g3client.WithClients(g3client.SowerClient, g3client.FenceClient))
 		if err != nil {
 			return err
 		}
 		defer closer()
 
-		status, err := sc.GetGen3Interface().Sower().Status(context.Background(), args[0])
+		status, err := sc.Gen3.SowerClient().Status(context.Background(), args[1])
 		if err != nil {
 			return err
 		}
@@ -106,29 +99,28 @@ var StatusCmd = &cobra.Command{
 }
 
 var (
-	outputRemote string
+	outputGitRemote string
 )
 
 var OutputCmd = &cobra.Command{
-	Use:   "output <UID>",
+	Use:   "output <profile> <UID>",
 	Short: "view output logs of a specific job on sower",
 	Long: `The 'output' command is how sower job output logs are communicated to the user.
 	A specific job's UID can be found from running the list command`,
-	Args: cobra.ExactArgs(1),
+	Args: cobra.ExactArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		remote, err := remoteutil.LoadRemoteOrDefault(outputRemote)
-		if err != nil {
-			return fmt.Errorf("could not locate remote: %w", err)
+		fmt.Printf("Using profile: %s\n", args[0])
+		if outputGitRemote != "" {
+			fmt.Printf("Using git remote: %s\n", outputGitRemote)
 		}
-		fmt.Printf("Using remote: %s\n", string(*remote))
 
-		sc, closer, err := client.NewGen3Client(*remote, g3client.WithClients(g3client.SowerClient, g3client.FenceClient))
+		sc, closer, err := client.NewGen3Client(args[0], g3client.WithClients(g3client.SowerClient, g3client.FenceClient))
 		if err != nil {
 			return err
 		}
 		defer closer()
 
-		output, err := sc.GetGen3Interface().Sower().Output(context.Background(), args[0])
+		output, err := sc.Gen3.SowerClient().Output(context.Background(), args[1])
 		if err != nil {
 			return err
 		}
@@ -138,8 +130,8 @@ var OutputCmd = &cobra.Command{
 }
 
 func init() {
-	PublishCmd.Flags().StringVarP(&publishRemote, "remote", "r", "", "target DRS server (default: default_remote)")
-	ListCmd.Flags().StringVarP(&listRemote, "remote", "r", "", "target DRS server (default: default_remote)")
-	StatusCmd.Flags().StringVarP(&statusRemote, "remote", "r", "", "target DRS server (default: default_remote)")
-	OutputCmd.Flags().StringVarP(&outputRemote, "remote", "r", "", "target DRS server (default: default_remote)")
+	PublishCmd.Flags().StringVarP(&publishGitRemote, "remote", "r", "", "git remote name for repository URL lookup (default: dev/origin per git config)")
+	ListCmd.Flags().StringVarP(&listGitRemote, "remote", "r", "", "git remote name when you want to document repo context")
+	StatusCmd.Flags().StringVarP(&statusGitRemote, "remote", "r", "", "git remote name when you want to document repo context")
+	OutputCmd.Flags().StringVarP(&outputGitRemote, "remote", "r", "", "git remote name when you want to document repo context")
 }

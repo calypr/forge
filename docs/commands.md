@@ -60,13 +60,12 @@ forge meta [--remote REMOTE_NAME]
 Generates FHIR metadata files locally in the `META/` directory. This is useful for debugging what metadata will be created, but it's not required for normal workflows (metadata is generated automatically during the publish job).
 
 The command:
-1. Queries your CALYPR project for all DRS objects
-2. Reads git-lfs tracked files in your repository
+1. Queries Syfon for your project DRS objects
+2. Reads tracked git object pointers from your repository
 3. Matches them by SHA256 hash
 4. Creates DocumentReference resources (one per file)
-5. Creates Directory resources (one per folder)
-6. Creates or updates the ResearchStudy resource (one per project)
-7. Writes NDJSON files to `META/`
+5. Creates or updates the ResearchStudy resource (one per project)
+6. Writes NDJSON files to `META/`
 
 **Example:**
 ```bash
@@ -74,8 +73,6 @@ $ forge meta
 
 Loaded existing ResearchStudy from ./META/ResearchStudy.ndjson with ID abc123...
 Processed 15 records
-Finished writing all DocumentReference records.
-Finished writing all Directory records.
 ```
 
 **Output structure:**
@@ -83,7 +80,6 @@ Finished writing all Directory records.
 your-repo/
 ├── META/
 │   ├── DocumentReference.ndjson
-│   ├── Directory.ndjson
 │   └── ResearchStudy.ndjson
 ```
 
@@ -121,7 +117,6 @@ $ forge validate data
 
 Validating NDJSON files in META/...
 ✓ META/DocumentReference.ndjson (15 resources validated)
-✓ META/Directory.ndjson (8 resources validated)
 ✓ META/ResearchStudy.ndjson (1 resource validated)
 
 All files valid!
@@ -187,7 +182,7 @@ forge validate edge [PATH] [--remote REMOTE_NAME] [--export-vertices] [--export-
 
 **What it does:**
 
-Validates that all references between FHIR resources are valid. For example, checks that DocumentReference resources reference valid Directory resources, and that all Directory references point to existing directories.
+Validates that all references between generated FHIR resources are valid. In the current Syfon-native flow this is primarily `DocumentReference` to `ResearchStudy` linkage.
 
 **Example:**
 ```bash

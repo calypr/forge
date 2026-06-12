@@ -10,7 +10,7 @@ Forge uses FHIR because Gen3 can index and search FHIR resources, making your da
 
 ## Generated Resources
 
-Forge creates three types of FHIR resources:
+Forge creates two types of FHIR resources:
 
 ### 1. DocumentReference (one per file)
 
@@ -57,38 +57,7 @@ Represents a single data file in your repository.
 - `content.attachment` - File details (name, size, URL, type)
 - `subject` - Links to the parent ResearchStudy
 
-### 2. Directory (one per folder)
-
-Represents a folder in your project's directory structure.
-
-**What it contains:**
-- Unique identifier for the directory
-- Directory name
-- References to child directories and files
-- Position in the hierarchy
-
-**Example:**
-```json
-{
-  "resourceType": "Directory",
-  "id": "dir-abc123-...",
-  "name": "sequencing-data",
-  "child": [
-    {"reference": "DocumentReference/abc123..."},
-    {"reference": "DocumentReference/def456..."},
-    {"reference": "Directory/subdir-xyz789..."}
-  ]
-}
-```
-
-**Key fields:**
-- `id` - Generated from SHA1 hash of endpoint + directory path
-- `name` - Folder name
-- `child` - Array of references to files and subdirectories
-
-**Note:** Directory is not a standard FHIR R5 resource - it's a custom extension used by Gen3 to represent file system structure.
-
-### 3. ResearchStudy (one per project)
+### 2. ResearchStudy (one per project)
 
 Represents your entire project or dataset.
 
@@ -97,8 +66,6 @@ Represents your entire project or dataset.
 - Gen3 project ID
 - Project description
 - Status
-- Reference to the root directory
-
 **Example:**
 ```json
 {
@@ -110,10 +77,7 @@ Represents your entire project or dataset.
     "value": "my-project-123"
   }],
   "status": "active",
-  "description": "Skeleton ResearchStudy for my-project-123",
-  "rootDir": {
-    "reference": "Directory/root-dir-id"
-  }
+  "description": "Skeleton ResearchStudy for my-project-123"
 }
 ```
 
@@ -121,10 +85,6 @@ Represents your entire project or dataset.
 - `id` - Generated from endpoint + project ID
 - `identifier.value` - Your Gen3 project ID
 - `status` - "active" for current projects
-- `rootDir` - Custom extension linking to root Directory
-
-**Note:** The `rootDir` field is a custom extension, not part of standard FHIR.
-
 ## File Format: NDJSON
 
 Metadata is stored as NDJSON (Newline Delimited JSON) files:
@@ -142,7 +102,6 @@ Metadata is stored as NDJSON (Newline Delimited JSON) files:
 
 **Generated files:**
 - `META/DocumentReference.ndjson` - All file metadata
-- `META/Directory.ndjson` - All directory metadata
 - `META/ResearchStudy.ndjson` - Project metadata
 
 ## How Files Are Mapped
@@ -151,7 +110,7 @@ When forge generates metadata, it follows this process:
 
 ### 1. Discover Files
 
-Queries Gen3 IndexD to find all DRS objects in your project, then reads git-lfs tracked files in your local repository.
+Queries Syfon DRS/index APIs for objects in your project, then reads tracked git pointer files in your local repository.
 
 ### 2. Match by Hash
 
@@ -160,18 +119,10 @@ Matches DRS objects to local files using SHA256 hashes. This ensures each file i
 ### 3. Generate DocumentReference
 
 For each matched file, creates a DocumentReference resource with:
-- File path and name from git-lfs
-- Size and hashes from DRS object
-- Creation date from git-lfs metadata
+- File path from the tracked pointer
+- Size and hashes from the Syfon DRS object
+- Creation date from the Syfon DRS object
 - DRS URL for retrieval
-
-### 4. Build Directory Tree
-
-Parses file paths to construct the directory hierarchy. Creates a Directory resource for each unique folder path.
-
-### 5. Link Everything
-
-Connects DocumentReferences to their parent Directories, Directories to parent Directories, and all top-level Directories to the ResearchStudy via the rootDir field.
 
 ## ID Generation
 
@@ -184,36 +135,12 @@ ID = SHA1(SHA1(endpoint) + resource_path)
 
 **Examples:**
 - DocumentReference: `SHA1(SHA1(endpoint) + file_path)`
-- Directory: `SHA1(SHA1(endpoint) + directory_path)`
 - ResearchStudy: `SHA1(SHA1(endpoint) + "ResearchStudy" + project_id)`
 
 This approach ensures:
 - IDs are globally unique
 - The same file always gets the same ID
 - No collisions between different resources
-
-## Custom Extensions
-
-Forge adds some non-standard FHIR fields for Gen3 integration:
-
-### rootDir (in ResearchStudy)
-
-Links the ResearchStudy to the root Directory resource.
-
-```json
-{
-  "resourceType": "ResearchStudy",
-  "rootDir": {
-    "reference": "Directory/root-id"
-  }
-}
-```
-
-This allows Gen3 to navigate the entire directory tree starting from the project level.
-
-### Directory Resource
-
-The entire Directory resource type is a custom extension. It's not part of FHIR R5, but follows FHIR conventions for structure and references.
 
 ## Validation
 
@@ -241,7 +168,7 @@ When you add or modify files and run `forge publish` again, Forge either uses th
 1. Existing DocumentReferences are updated with new information
 2. New files get new DocumentReference resources
 3. Deleted files have their DocumentReferences removed
-4. Directory structure is rebuilt to reflect current state
+4. The `ResearchStudy` file is preserved and refreshed without custom directory fields
 
 Because IDs are deterministic, the same files keep the same IDs across updates.
 

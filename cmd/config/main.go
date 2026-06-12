@@ -4,28 +4,23 @@ import (
 	"fmt"
 
 	"github.com/calypr/forge/config"
-	"github.com/calypr/forge/utils/remoteutil"
 	"github.com/spf13/cobra"
 )
 
 var (
-	configRemote string
+	configGitRemote string
 )
 
 var ConfigCmd = &cobra.Command{
-	Use:     "config",
+	Use:     "config <profile>",
 	Short:   "Build skeleton template for CALYPR explorer page config.",
 	Long:    `Used for creating a template CALYPR explorer config to build and customize your own config`,
-	Example: "forge config --remote local",
-	Args:    cobra.NoArgs,
+	Example: "forge config init --remote dev",
+	Args:    cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		remote, err := remoteutil.LoadRemoteOrDefault(configRemote)
-		if err != nil {
-			return fmt.Errorf("could not locate remote: %w", err)
-		}
-		fmt.Printf("Using remote: %s\n", string(*remote))
+		fmt.Printf("Using profile: %s\n", args[0])
 
-		err = config.RunConfigInit(*remote)
+		err := config.RunConfigInit(configGitRemote)
 		if err != nil {
 			return err
 		}
@@ -34,5 +29,5 @@ var ConfigCmd = &cobra.Command{
 }
 
 func init() {
-	ConfigCmd.Flags().StringVarP(&configRemote, "remote", "r", "", "target DRS server (default: default_remote)")
+	ConfigCmd.Flags().StringVarP(&configGitRemote, "remote", "r", "", "git remote name for git-drs project config lookup")
 }

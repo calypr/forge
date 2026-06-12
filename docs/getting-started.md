@@ -141,10 +141,9 @@ Here's what happens under the hood:
 
 ## What Gets Generated
 
-Forge creates three types of FHIR R5 resources:
+Forge creates two FHIR R5 resources:
 
 - **DocumentReference** - One for each file, with metadata like size, hash, URL, and creation date
-- **Directory** - One for each folder, showing the directory structure
 - **ResearchStudy** - One for the entire project, linking everything together
 
 These resources are stored as NDJSON files in the `META/` directory.

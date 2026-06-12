@@ -3,8 +3,8 @@ package metadata
 import (
 	"fmt"
 	"strings"
+	"time"
 
-	"github.com/calypr/data-client/drs"
 	code "github.com/google/fhir/go/proto/google/fhir/proto/r5/core/codes_go_proto"
 	dtpb "github.com/google/fhir/go/proto/google/fhir/proto/r5/core/datatypes_go_proto"
 	cprb "github.com/google/fhir/go/proto/google/fhir/proto/r5/core/resources/bundle_and_contained_resource_go_proto"
@@ -17,8 +17,6 @@ const (
 	FILE_PREFIX               = "file://"
 	RESEARCH_STUDY            = "ResearchStudy"
 	DOCUMENT_RESOURCE         = "DocumentReference"
-	DIRECTORY_RESOURCE        = "Directory"
-	DIR_ID_PREFIX             = DIRECTORY_RESOURCE + "/"
 	SOURCE_EXTENSION_URL      = "/fhir/StructureDefinition/source"
 	SOURCE_PATH_EXTENSION_URL = "/fhir/StructureDefinition/source_path"
 	GITHUB_SOURCE             = "github"
@@ -46,27 +44,28 @@ func CreateResourceReference(resourceId string) *dtpb.Reference {
 	}
 }
 
-func templateDocRef(obj *drs.DRSObject, endpoint string, project string, rSID string) *cprb.ContainedResource {
+func templateDocRef(obj *MetaObject, endpoint string, project string, rSID string) *cprb.ContainedResource {
 	baseEndpoint := normalizeEndpoint(endpoint)
+	name := obj.Name
 	id := uuid.NewSHA1(
 		uuid.NewSHA1(uuid.NameSpaceDNS, []byte(endpoint)),
-		fmt.Appendf(nil, "%s/%s", project, obj.Name),
+		fmt.Appendf(nil, "%s/%s", project, name),
 	).String()
 
 	var extensions []*dtpb.Extension
-	if obj.Checksums.MD5 != "" {
+	if md5 := checksumValue(obj.Checksums, "md5"); md5 != "" {
 		extensions = append(extensions, &dtpb.Extension{
 			Url: &dtpb.Uri{Value: baseEndpoint + FHIR_STRUCTURE_DEFINITION + "/checksum-md5"},
 			Value: &dtpb.Extension_ValueX{
-				Choice: &dtpb.Extension_ValueX_StringValue{StringValue: &dtpb.String{Value: obj.Checksums.MD5}},
+				Choice: &dtpb.Extension_ValueX_StringValue{StringValue: &dtpb.String{Value: md5}},
 			},
 		})
 	}
-	if obj.Checksums.SHA256 != "" {
+	if sha256 := checksumValue(obj.Checksums, "sha-256", "sha256"); sha256 != "" {
 		extensions = append(extensions, &dtpb.Extension{
 			Url: &dtpb.Uri{Value: baseEndpoint + FHIR_STRUCTURE_DEFINITION + "/checksum-sha256"},
 			Value: &dtpb.Extension_ValueX{
-				Choice: &dtpb.Extension_ValueX_StringValue{StringValue: &dtpb.String{Value: obj.Checksums.SHA256}},
+				Choice: &dtpb.Extension_ValueX_StringValue{StringValue: &dtpb.String{Value: sha256}},
 			},
 		})
 	}
@@ -79,29 +78,26 @@ func templateDocRef(obj *drs.DRSObject, endpoint string, project string, rSID st
 	})
 
 	var url *dtpb.Url
-	if len(obj.AccessMethods) > 0 {
-		// TODO: Big assumption here assuming that there exists only one url per FHIR attachment
-		url = &dtpb.Url{Value: obj.AccessMethods[0].AccessURL.URL}
+	if strings.TrimSpace(obj.AccessURL) != "" {
+		url = &dtpb.Url{Value: obj.AccessURL}
 	}
 
 	dr := &drpb.DocumentReference{
 		Id:        &dtpb.Id{Value: id},
 		Status:    &drpb.DocumentReference_StatusCode{Value: code.DocumentReferenceStatusCode_CURRENT},
 		DocStatus: &drpb.DocumentReference_DocStatusCode{Value: code.CompositionStatusCode_FINAL},
-		Date:      parseFHIRInstantString(obj.CreatedTime),
 		Identifier: []*dtpb.Identifier{
 			{
 				Use:    &dtpb.Identifier_UseCode{Value: code.IdentifierUseCode_OFFICIAL},
 				System: &dtpb.Uri{Value: baseEndpoint + "/" + project},
-				Value:  &dtpb.String{Value: obj.Id},
+				Value:  &dtpb.String{Value: obj.ID},
 			},
 		},
 		Content: []*drpb.DocumentReference_Content{
 			{
 				Attachment: &dtpb.Attachment{
-					Creation:  parseFHIRDateTimeString(obj.CreatedTime),
 					Size:      &dtpb.Integer64{Value: obj.Size},
-					Title:     &dtpb.String{Value: obj.Name},
+					Title:     &dtpb.String{Value: name},
 					Extension: extensions,
 					Url:       url,
 				},
@@ -114,6 +110,11 @@ func templateDocRef(obj *drs.DRSObject, endpoint string, project string, rSID st
 				},
 			},
 		},
+	}
+	if !obj.CreatedTime.IsZero() {
+		ts := obj.CreatedTime.Format(time.RFC3339)
+		dr.Date = parseFHIRInstantString(ts)
+		dr.Content[0].Attachment.Creation = parseFHIRDateTimeString(ts)
 	}
 
 	return &cprb.ContainedResource{
