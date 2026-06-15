@@ -382,7 +382,8 @@ func processProjectRecordsAndUpdateFHIR(drsRecords []MetaObject, fhirDirectory s
 		if sha == "" {
 			continue
 		}
-		if _, exists := existingBySHA256[sha]; exists {
+		if existingCr, exists := existingBySHA256[sha]; exists {
+			syncSyfonIdentifier(existingCr.GetDocumentReference(), &obj, endpoint, project)
 			continue
 		}
 		if _, exists := addedBySHA[sha]; exists {
@@ -420,6 +421,32 @@ func processProjectRecordsAndUpdateFHIR(drsRecords []MetaObject, fhirDirectory s
 		log.Printf("WARNING: no matching Syfon objects were found for project %q", project)
 	}
 	return nil
+}
+
+func syncSyfonIdentifier(docRef *drpb.DocumentReference, obj *MetaObject, endpoint string, project string) {
+	if docRef == nil || obj == nil || strings.TrimSpace(obj.ID) == "" {
+		return
+	}
+	systemValue := normalizeEndpoint(endpoint) + "/" + project
+	replacement := &dtpb.Identifier{
+		Use:    &dtpb.Identifier_UseCode{Value: code.IdentifierUseCode_OFFICIAL},
+		System: &dtpb.Uri{Value: systemValue},
+		Value:  &dtpb.String{Value: obj.ID},
+	}
+
+	identifiers := docRef.GetIdentifier()
+	filtered := make([]*dtpb.Identifier, 0, len(identifiers))
+	for _, identifier := range identifiers {
+		if identifier == nil {
+			continue
+		}
+		if identifier.GetUse().GetValue() == code.IdentifierUseCode_OFFICIAL ||
+			strings.TrimSpace(identifier.GetSystem().GetValue()) == systemValue {
+			continue
+		}
+		filtered = append(filtered, identifier)
+	}
+	docRef.Identifier = append([]*dtpb.Identifier{replacement}, filtered...)
 }
 
 func docRefSHA256(docRef *drpb.DocumentReference) string {

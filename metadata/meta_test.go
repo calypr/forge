@@ -94,6 +94,74 @@ func TestProcessProjectRecordsPreservesExistingAndAddsMissing(t *testing.T) {
 	}
 }
 
+func TestProcessProjectRecordsRewritesStaleSyfonIdentifier(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	endpoint := "localhost"
+	project := "test-project"
+	rsID := "rs-1"
+
+	existing := &MetaObject{
+		ID:          "stale-id",
+		Name:        "existing.txt",
+		Size:        100,
+		Checksums:   map[string]string{"sha-256": "sha-existing"},
+		CreatedTime: time.Date(2023, 10, 27, 10, 0, 0, 0, time.UTC),
+		AccessURL:   "s3://bucket/existing",
+	}
+	existingCr := templateDocRef(existing, endpoint, project, rsID)
+	existingCr.GetDocumentReference().Identifier[0].Value = &dtpb.String{Value: "wrong-syfon-did"}
+	existingCr.GetDocumentReference().Identifier = append(existingCr.GetDocumentReference().Identifier,
+		&dtpb.Identifier{
+			System: &dtpb.Uri{Value: "https://humantumoratlas.org/FILE_SHA256"},
+			Value:  &dtpb.String{Value: "sha-existing"},
+		},
+	)
+
+	marshaller, _ := jsonformat.NewMarshaller(false, "", "", fver.R5)
+	jsonBytes, _ := marshaller.Marshal(existingCr)
+	docRefFP := filepath.Join(tmpDir, DOCUMENT_RESOURCE+NDJSON_EXT)
+	if err := os.WriteFile(docRefFP, append(jsonBytes, '\n'), 0o644); err != nil {
+		t.Fatalf("failed to write initial metadata: %v", err)
+	}
+
+	records := []MetaObject{{
+		ID:          "correct-syfon-did",
+		Name:        "existing.txt",
+		Size:        100,
+		Checksums:   map[string]string{"sha-256": "sha-existing"},
+		CreatedTime: time.Date(2024, 1, 2, 3, 4, 5, 0, time.UTC),
+		AccessURL:   "s3://bucket/existing",
+	}}
+
+	if err := processProjectRecordsAndUpdateFHIR(records, tmpDir, endpoint, project, rsID); err != nil {
+		t.Fatalf("processProjectRecordsAndUpdateFHIR failed: %v", err)
+	}
+
+	file, err := os.Open(docRefFP)
+	if err != nil {
+		t.Fatalf("failed to open output file: %v", err)
+	}
+	defer file.Close()
+
+	unmarshaller, _ := jsonformat.NewUnmarshallerWithoutValidation("America/Los_Angeles", fver.R5)
+	scanner := bufio.NewScanner(file)
+	if !scanner.Scan() {
+		t.Fatal("expected one document reference row")
+	}
+	cr, err := unmarshaller.UnmarshalR5(scanner.Bytes())
+	if err != nil {
+		t.Fatalf("failed to unmarshal result: %v", err)
+	}
+	docRef := cr.GetDocumentReference()
+	if got := docRef.GetIdentifier()[0].GetValue().GetValue(); got != "correct-syfon-did" {
+		t.Fatalf("expected syfon identifier to be rewritten, got %q", got)
+	}
+	if got := docRef.GetIdentifier()[1].GetValue().GetValue(); got != "sha-existing" {
+		t.Fatalf("expected existing secondary identifier to be preserved after syfon identifier, got %q", got)
+	}
+}
+
 func TestDocRefSHA256ReadsIdentifierFallback(t *testing.T) {
 	docRef := templateDocRef(&MetaObject{
 		ID:        "drs-1",
