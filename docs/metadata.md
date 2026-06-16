@@ -1,6 +1,6 @@
 # FHIR Metadata Structure
 
-Forge generates FHIR R5 (Fast Healthcare Interoperability Resources) metadata to describe your data files in a standardized format. This makes your datasets discoverable and searchable through the Gen3 portal.
+Forge generates FHIR R5 (Fast Healthcare Interoperability Resources) metadata to describe your data files in a standardized format. This makes your datasets discoverable and searchable through the CALYPR portal.
 
 ## What is FHIR?
 
@@ -10,19 +10,19 @@ Forge uses FHIR because Gen3 can index and search FHIR resources, making your da
 
 ## Generated Resources
 
-Forge creates three types of FHIR resources:
+Forge creates two types of FHIR resources:
 
 ### 1. DocumentReference (one per file)
 
 Represents a single data file in your repository.
 
 **What it contains:**
-- Unique identifier (deterministic UUID based on file hash)
-- DRS object ID for retrieving the file
-- File metadata: name, size, MIME type, creation date
-- Hash values: MD5, SHA256, SHA512
-- Storage URL (DRS endpoint)
-- Reference to the parent ResearchStudy
+- Stable FHIR resource ID for the row itself
+- Syfon object ID in `identifier[0]`
+- File metadata: name, size, creation date
+- Checksum values such as SHA256
+- Storage URL from Syfon
+- Reference to the parent `ResearchStudy`
 
 **Example:**
 ```json
@@ -30,8 +30,9 @@ Represents a single data file in your repository.
   "resourceType": "DocumentReference",
   "id": "abc123-def456-...",
   "identifier": [{
-    "system": "https://calypr-public.ohsu.edu/drs",
-    "value": "drs://dg.4503/abc123..."
+    "use": "official",
+    "system": "https://calypr-public.ohsu.edu/BForePC",
+    "value": "15d4dd21-618e-55ca-b325-860f58705d3a"
   }],
   "status": "current",
   "date": "2024-01-15T10:30:00Z",
@@ -39,7 +40,7 @@ Represents a single data file in your repository.
     "attachment": {
       "title": "sample_001.fastq.gz",
       "contentType": "application/gzip",
-      "url": "drs://calypr-public.ohsu.edu/abc123...",
+      "url": "s3://bforepc-prod/path/to/file.fastq.gz",
       "size": 1073741824,
       "creation": "2024-01-15T10:30:00Z"
     }
@@ -51,44 +52,13 @@ Represents a single data file in your repository.
 ```
 
 **Key fields:**
-- `id` - Generated from SHA1 hash of endpoint + filename
-- `identifier` - DRS object ID for file retrieval
+- `id` - Stable Forge-generated FHIR row ID
+- `identifier[0]` - Official Syfon object ID used by downstream consumers
 - `status` - Always "current" for active files
 - `content.attachment` - File details (name, size, URL, type)
 - `subject` - Links to the parent ResearchStudy
 
-### 2. Directory (one per folder)
-
-Represents a folder in your project's directory structure.
-
-**What it contains:**
-- Unique identifier for the directory
-- Directory name
-- References to child directories and files
-- Position in the hierarchy
-
-**Example:**
-```json
-{
-  "resourceType": "Directory",
-  "id": "dir-abc123-...",
-  "name": "sequencing-data",
-  "child": [
-    {"reference": "DocumentReference/abc123..."},
-    {"reference": "DocumentReference/def456..."},
-    {"reference": "Directory/subdir-xyz789..."}
-  ]
-}
-```
-
-**Key fields:**
-- `id` - Generated from SHA1 hash of endpoint + directory path
-- `name` - Folder name
-- `child` - Array of references to files and subdirectories
-
-**Note:** Directory is not a standard FHIR R5 resource - it's a custom extension used by Gen3 to represent file system structure.
-
-### 3. ResearchStudy (one per project)
+### 2. ResearchStudy (one per project)
 
 Represents your entire project or dataset.
 
@@ -97,8 +67,6 @@ Represents your entire project or dataset.
 - Gen3 project ID
 - Project description
 - Status
-- Reference to the root directory
-
 **Example:**
 ```json
 {
@@ -110,10 +78,7 @@ Represents your entire project or dataset.
     "value": "my-project-123"
   }],
   "status": "active",
-  "description": "Skeleton ResearchStudy for my-project-123",
-  "rootDir": {
-    "reference": "Directory/root-dir-id"
-  }
+  "description": "Skeleton ResearchStudy for my-project-123"
 }
 ```
 
@@ -121,10 +86,6 @@ Represents your entire project or dataset.
 - `id` - Generated from endpoint + project ID
 - `identifier.value` - Your Gen3 project ID
 - `status` - "active" for current projects
-- `rootDir` - Custom extension linking to root Directory
-
-**Note:** The `rootDir` field is a custom extension, not part of standard FHIR.
-
 ## File Format: NDJSON
 
 Metadata is stored as NDJSON (Newline Delimited JSON) files:
@@ -142,36 +103,60 @@ Metadata is stored as NDJSON (Newline Delimited JSON) files:
 
 **Generated files:**
 - `META/DocumentReference.ndjson` - All file metadata
-- `META/Directory.ndjson` - All directory metadata
 - `META/ResearchStudy.ndjson` - Project metadata
 
 ## How Files Are Mapped
 
 When forge generates metadata, it follows this process:
 
-### 1. Discover Files
+### 1. Read existing metadata
 
-Queries Gen3 IndexD to find all DRS objects in your project, then reads git-lfs tracked files in your local repository.
+If `META/DocumentReference.ndjson` already exists, Forge loads the current rows first. Those rows are treated as editable local metadata that may already contain category fields, subject references, and other annotations you want to preserve.
 
-### 2. Match by Hash
+### 2. List Syfon project records
 
-Matches DRS objects to local files using SHA256 hashes. This ensures each file is correctly identified even if filenames change.
+Forge lists the Syfon records for the configured `organization` and `project`. Syfon is the source of truth for object identity, object path, checksums, and access URL.
 
-### 3. Generate DocumentReference
+### 3. Join by SHA256
 
-For each matched file, creates a DocumentReference resource with:
-- File path and name from git-lfs
-- Size and hashes from DRS object
-- Creation date from git-lfs metadata
-- DRS URL for retrieval
+Forge joins existing local `DocumentReference` rows to Syfon records by SHA256. Forge does not push metadata back into Syfon. This is a read-Syfon plus update-local-NDJSON flow.
 
-### 4. Build Directory Tree
+### 4. Rewrite the official Syfon identifier when needed
 
-Parses file paths to construct the directory hierarchy. Creates a Directory resource for each unique folder path.
+If a local row matches a Syfon object by SHA256 but `identifier[0]` is stale or missing, Forge rewrites the official identifier in memory before writing the file back out. This is intentional.
 
-### 5. Link Everything
+`identifier[0]` is the Syfon object ID boundary used by downstream services and the frontend download flow. Older metadata may still contain a path-style identifier or an outdated OID. Forge preserves the rest of the row, but it does not preserve a stale official identifier.
 
-Connects DocumentReferences to their parent Directories, Directories to parent Directories, and all top-level Directories to the ResearchStudy via the rootDir field.
+### 5. Generate missing `DocumentReference` rows
+
+If a Syfon object exists for the project but no local `DocumentReference` row matches it by SHA256, Forge generates a new row.
+
+## Duplicate SHA256 edge case
+
+Some projects contain multiple distinct Syfon objects with the same SHA256. Common examples are small sidecar JSON files, offsets files, or copied artifacts that are byte-identical but live at different object paths.
+
+This matters because a naive `map[sha] -> row` join is wrong for those projects. It causes one of these failures:
+
+- only the first local row for that checksum gets updated
+- later rows with the same checksum never receive their Syfon OID
+- multiple Syfon objects with the same checksum collapse into one generated row
+
+Forge handles this by:
+
+- using SHA256 as the primary join key
+- treating duplicate-checksum rows as a set, not a single record
+- using the stored file path only to disambiguate which local row belongs to which Syfon object when the checksum is not unique
+
+The important boundary is still Syfon object identity. The path is only a tie-breaker for duplicate hashes.
+
+## What Forge Owns
+
+In the current Syfon-native flow, Forge owns only:
+
+- `META/DocumentReference.ndjson`
+- `META/ResearchStudy.ndjson`
+
+Forge no longer emits custom `Directory` resources and no longer adds a custom `rootDir` field to `ResearchStudy`.
 
 ## ID Generation
 
@@ -184,36 +169,12 @@ ID = SHA1(SHA1(endpoint) + resource_path)
 
 **Examples:**
 - DocumentReference: `SHA1(SHA1(endpoint) + file_path)`
-- Directory: `SHA1(SHA1(endpoint) + directory_path)`
 - ResearchStudy: `SHA1(SHA1(endpoint) + "ResearchStudy" + project_id)`
 
 This approach ensures:
 - IDs are globally unique
 - The same file always gets the same ID
 - No collisions between different resources
-
-## Custom Extensions
-
-Forge adds some non-standard FHIR fields for Gen3 integration:
-
-### rootDir (in ResearchStudy)
-
-Links the ResearchStudy to the root Directory resource.
-
-```json
-{
-  "resourceType": "ResearchStudy",
-  "rootDir": {
-    "reference": "Directory/root-id"
-  }
-}
-```
-
-This allows Gen3 to navigate the entire directory tree starting from the project level.
-
-### Directory Resource
-
-The entire Directory resource type is a custom extension. It's not part of FHIR R5, but follows FHIR conventions for structure and references.
 
 ## Validation
 
@@ -236,12 +197,12 @@ forge validate data
 
 ## Updating Metadata
 
-When you add or modify files and run `forge publish` again, Forge either uses the metadata provided or  regenerates all metadata:
+When you add or modify files and run `forge publish` again, Forge either uses the metadata provided or regenerates all metadata:
 
-1. Existing DocumentReferences are updated with new information
+1. Existing `DocumentReference` rows are preserved and refreshed against current Syfon object identity
 2. New files get new DocumentReference resources
 3. Deleted files have their DocumentReferences removed
-4. Directory structure is rebuilt to reflect current state
+4. The `ResearchStudy` file is preserved and refreshed without custom directory fields
 
 Because IDs are deterministic, the same files keep the same IDs across updates.
 

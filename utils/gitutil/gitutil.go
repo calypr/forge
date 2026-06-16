@@ -3,6 +3,7 @@ package gitutil
 import (
 	"fmt"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 
@@ -18,6 +19,38 @@ func OpenRepository(path string) (*git.Repository, error) {
 		return nil, fmt.Errorf("failed to open git repository at %s: %w", path, err)
 	}
 	return repo, nil
+}
+
+func ResolveGitRemoteName(repo *git.Repository, requested string) (string, error) {
+	name := strings.TrimSpace(requested)
+	if name != "" {
+		if _, err := repo.Remote(name); err != nil {
+			return "", fmt.Errorf("git remote %q not found: %w", name, err)
+		}
+		return name, nil
+	}
+
+	if _, err := repo.Remote("origin"); err == nil {
+		return "origin", nil
+	}
+
+	remotes, err := repo.Remotes()
+	if err != nil {
+		return "", fmt.Errorf("failed to list git remotes: %w", err)
+	}
+	if len(remotes) == 1 {
+		return remotes[0].Config().Name, nil
+	}
+	if len(remotes) == 0 {
+		return "", fmt.Errorf("no git remotes configured")
+	}
+
+	names := make([]string, 0, len(remotes))
+	for _, remote := range remotes {
+		names = append(names, remote.Config().Name)
+	}
+	sort.Strings(names)
+	return "", fmt.Errorf("multiple git remotes found (%s); specify one with --remote", strings.Join(names, ", "))
 }
 
 func GetLastLocalCommit(repo *git.Repository) (plumbing.Hash, error) {

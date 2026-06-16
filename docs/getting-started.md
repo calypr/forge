@@ -10,7 +10,7 @@ Before using forge, you'll need:
 - A git-drs repository with data files already pushed to CALYPR
 - CALYPR credentials set up through git-drs
 - A GitHub Personal Access Token with `repo` scope ([create one here](https://github.com/settings/tokens))
-- Go 1.21+ to build from source
+- Go 1.26.4+ to build from source
 
 ## Installation
 
@@ -72,8 +72,8 @@ Forge provides three main capabilities:
 Make sure your files are already tracked and pushed through git-drs:
 
 ```bash
-# Verify files are tracked
-git lfs ls-files
+# Verify git-drs remotes are configured
+git drs remote list
 
 # Publish the metadata
 forge publish ghp_your_token_here
@@ -102,13 +102,17 @@ forge publish ghp_token
 If you want to see what metadata will be generated before publishing:
 ```bash
 # Generate metadata locally
-forge meta
+forge meta public --remote public
 
 
 # Look at what was created
 ls -la META/
 cat META/DocumentReference.ndjson | jq .
 ```
+
+`forge meta` is a Syfon-native reconciliation step. It reads project records from Syfon, joins them to any existing local `META/DocumentReference.ndjson` rows by SHA256, fixes stale Syfon object IDs in `identifier[0]`, and generates rows that are missing locally.
+
+If the same SHA256 exists on more than one file, Forge still treats them as distinct objects. It uses the stored file path only to disambiguate which local row belongs to which Syfon object for that shared checksum.
 
 If you are supplying your own metadata and want to validate it before publishing:
 
@@ -141,13 +145,12 @@ Here's what happens under the hood:
 
 ## What Gets Generated
 
-Forge creates three types of FHIR R5 resources:
+Forge creates two FHIR R5 resources:
 
 - **DocumentReference** - One for each file, with metadata like size, hash, URL, and creation date
-- **Directory** - One for each folder, showing the directory structure
 - **ResearchStudy** - One for the entire project, linking everything together
 
-These resources are stored as NDJSON files in the `META/` directory.
+These resources are stored as NDJSON files in the `META/` directory. Forge no longer generates custom `Directory` resources.
 
 ## Troubleshooting
 

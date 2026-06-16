@@ -11,7 +11,7 @@ import (
 	"github.com/bmeg/golib"
 	"github.com/bmeg/grip/gripql"
 	"github.com/bytedance/sonic"
-	"github.com/calypr/gecko/gecko/config"
+	"github.com/calypr/gecko/config"
 
 	"github.com/cockroachdb/errors"
 
@@ -35,7 +35,7 @@ var ValidateParentCmd = &cobra.Command{
 func init() {
 	ValidateDataCmd.Flags().StringVarP(&dataPath, "path", "p", META_PATH, "Path to metadata file(s) to validate")
 	ValidateEdgeCmd.Flags().StringVarP(&edgePath, "path", "p", META_PATH, "Path to metadata files directory")
-	ValidateEdgeCmd.Flags().StringVarP(&outputDir, "out-dir", "o", "", "Directory to save vertices and edges files")
+	ValidateEdgeCmd.Flags().StringVarP(&outputDir, "out-dir", "o", "", "Output path for vertices and edges files")
 	ValidateConfigCmd.Flags().StringVarP(&configPath, "path", "p", CONFIG_PATH, "Path to config file to validate")
 }
 

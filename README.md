@@ -61,8 +61,7 @@ sudo mv forge /usr/local/bin/
 ## Example Workflow
 
 ```bash
-# Use git-drs to track and push files
-git lfs track "*.fastq.gz"
+# Use git-drs to register and push files
 git add data/sample.fastq.gz
 git commit -m "Add sequencing data"
 git push
@@ -101,6 +100,4 @@ To create and push a tag:
 git push origin main --tags
 ```
 
-GitHub Actions will then:
-1. Build binaries for macOS and Linux (AMD64 and ARM64).
-2. Create a GitHub Release with the compiled assets.
+GitHub Actions will then build binaries for macOS and Linux and create a GitHub Release with the compiled assets.
