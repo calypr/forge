@@ -52,7 +52,7 @@ Generate FHIR metadata locally for debugging.
 
 **Usage:**
 ```bash
-forge meta [--remote REMOTE_NAME]
+forge meta <profile> [--remote GIT_REMOTE_NAME]
 ```
 
 **What it does:**
@@ -60,16 +60,19 @@ forge meta [--remote REMOTE_NAME]
 Generates FHIR metadata files locally in the `META/` directory. This is useful for debugging what metadata will be created, but it's not required for normal workflows (metadata is generated automatically during the publish job).
 
 The command:
-1. Queries Syfon for your project DRS objects
-2. Reads tracked git object pointers from your repository
-3. Matches them by SHA256 hash
-4. Creates DocumentReference resources (one per file)
-5. Creates or updates the ResearchStudy resource (one per project)
-6. Writes NDJSON files to `META/`
+1. Uses the CALYPR profile you pass as the first positional argument
+2. Resolves the git-drs remote configuration from `--remote`
+3. Lists Syfon records for the configured organization and project
+4. Loads existing local `DocumentReference` rows, if present
+5. Joins local rows to Syfon records by SHA256
+6. Rewrites `identifier[0]` to the current Syfon object ID when a row already exists locally
+7. Generates missing `DocumentReference` rows for Syfon objects not yet present locally
+8. Creates or updates the `ResearchStudy` resource
+9. Writes NDJSON files to `META/`
 
 **Example:**
 ```bash
-$ forge meta
+$ forge meta public --remote public
 
 Loaded existing ResearchStudy from ./META/ResearchStudy.ndjson with ID abc123...
 Processed 15 records
@@ -83,10 +86,21 @@ your-repo/
 │   └── ResearchStudy.ndjson
 ```
 
+**Arguments:**
+- `profile` - CALYPR profile name used to authenticate the Syfon client
+
 **Flags:**
-- `--remote`, `-r` - Specify which CALYPR remote to use (default: default_remote)
+- `--remote`, `-r` - Git remote / git-drs remote name used to resolve organization and project scope
 
 **When to use:** When you want to inspect metadata before publishing, or debug why validation is failing.
+
+**Join semantics:**
+- Syfon is the source of truth for object ID, checksum, access URL, and project scope
+- Existing local metadata is preserved where possible
+- The primary join key is SHA256
+- If the same SHA256 appears on multiple rows, Forge uses the stored path only to disambiguate which row belongs to which Syfon object
+- If a local row matches a Syfon object but has a stale or missing official identifier, Forge rewrites `identifier[0]` to the Syfon object ID
+- Forge does not emit `Directory.ndjson`
 
 ---
 
@@ -198,7 +212,7 @@ All references valid.
 - `--export-vertices` - Export all vertices to a file for inspection
 - `--export-edges` - Export all edges to a file for inspection
 
-**When to use:** When debugging complex directory structures or reference issues.
+**When to use:** When debugging `DocumentReference` or `ResearchStudy` reference issues.
 
 ---
 
