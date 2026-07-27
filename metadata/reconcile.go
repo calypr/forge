@@ -14,6 +14,7 @@ import (
 	"github.com/calypr/calypr-cli/g3client"
 	"github.com/calypr/forge/client"
 	"github.com/calypr/forge/utils/remoteutil"
+	gitinventory "github.com/calypr/git-drs/inventory"
 	fver "github.com/google/fhir/go/fhirversion"
 	"github.com/google/fhir/go/jsonformat"
 	dtpb "github.com/google/fhir/go/proto/google/fhir/proto/r5/core/datatypes_go_proto"
@@ -22,17 +23,10 @@ import (
 
 const fileSHA256System = "https://humantumoratlas.org/FILE_SHA256"
 
-// GitPointer describes a Git-LFS/Git-DRS pointer in the checked-out repository.
-// SHA256 is the canonical content identity used for reconciliation.
-type GitPointer struct {
-	Path   string
-	SHA256 string
-	Size   int64
-}
-
 // ReconcileOptions defines one immutable Git snapshot and its authored metadata.
 type ReconcileOptions struct {
 	RepositoryRoot string
+	GitRef         string
 	FHIRDirectory  string
 	ProfileName    string
 	GitRemoteName  string
@@ -54,6 +48,7 @@ type ReconcileReport struct {
 func CreateMeta(outPath string, profileName string, gitRemoteName string) error {
 	_, err := ReconcileGitPointers(context.Background(), ReconcileOptions{
 		RepositoryRoot: ".",
+		GitRef:         "HEAD",
 		FHIRDirectory:  outPath,
 		ProfileName:    profileName,
 		GitRemoteName:  gitRemoteName,
@@ -74,11 +69,19 @@ func ReconcileGitPointers(ctx context.Context, options ReconcileOptions) (Reconc
 		return report, fmt.Errorf("FHIR directory is required")
 	}
 
-	pointers, err := DiscoverGitPointers(options.RepositoryRoot)
+	pointerRecords, err := gitinventory.List(ctx, gitinventory.Options{
+		RepositoryRoot:  options.RepositoryRoot,
+		Ref:             options.GitRef,
+		ExcludePrefixes: []string{META_DIR, "CONFIG"},
+	})
 	if err != nil {
 		return report, err
 	}
-	report.GitPointers = len(pointers)
+	report.GitPointers = len(pointerRecords)
+	pointers := make(map[string][]gitinventory.Pointer)
+	for _, pointer := range pointerRecords {
+		pointers[pointer.SHA256] = append(pointers[pointer.SHA256], pointer)
+	}
 
 	sc, closer, err := client.NewGen3Client(options.ProfileName, g3client.WithClients(g3client.SyfonClient))
 	if err != nil {
@@ -144,13 +147,14 @@ func ReconcileGitPointers(ctx context.Context, options ReconcileOptions) (Reconc
 		candidates := objectsBySHA[sha]
 		switch len(candidates) {
 		case 0:
-			missingSyfon = append(missingSyfon, pointerDescription(pointers[sha]))
+			missingSyfon = append(missingSyfon, pointerDescription(sha, pointers[sha]))
 			continue
 		case 1:
 			object := candidates[0]
-			object.Size = pointers[sha].Size
+			pointer := pointers[sha][0]
+			object.Size = pointer.Size
 			if strings.TrimSpace(object.Name) == "" {
-				object.Name = filepath.Base(pointers[sha].Path)
+				object.Name = filepath.Base(pointer.Path)
 			}
 			row := templateDocRef(&object, sc.Credential().APIEndpoint, repoRemote.ProjectID, researchStudyID)
 			addSHA256Identifier(row.GetDocumentReference(), sha)
@@ -160,7 +164,7 @@ func ReconcileGitPointers(ctx context.Context, options ReconcileOptions) (Reconc
 			}
 			generated = append(generated, encoded)
 		default:
-			ambiguousSyfon = append(ambiguousSyfon, fmt.Sprintf("%s (%d Syfon records)", pointerDescription(pointers[sha]), len(candidates)))
+			ambiguousSyfon = append(ambiguousSyfon, fmt.Sprintf("%s (%d Syfon records)", pointerDescription(sha, pointers[sha]), len(candidates)))
 		}
 	}
 	if len(missingSyfon) > 0 || len(ambiguousSyfon) > 0 {
@@ -188,71 +192,6 @@ func ReconcileGitPointers(ctx context.Context, options ReconcileOptions) (Reconc
 
 // DiscoverGitPointers reads pointer files from a checkout. META and CONFIG are
 // intentionally excluded: they are ETL inputs, not data inventory.
-func DiscoverGitPointers(repositoryRoot string) (map[string]GitPointer, error) {
-	pointers := make(map[string]GitPointer)
-	err := filepath.WalkDir(repositoryRoot, func(path string, entry os.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return walkErr
-		}
-		rel, err := filepath.Rel(repositoryRoot, path)
-		if err != nil {
-			return err
-		}
-		if entry.IsDir() {
-			if rel == ".git" || rel == filepath.Clean(META_DIR) || rel == "CONFIG" {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		pointer, ok, err := readGitPointer(path, rel)
-		if err != nil || !ok {
-			return err
-		}
-		if existing, exists := pointers[pointer.SHA256]; exists && existing.Path != pointer.Path {
-			return fmt.Errorf("Git SHA256 %s appears at both %s and %s", pointer.SHA256, existing.Path, pointer.Path)
-		}
-		pointers[pointer.SHA256] = pointer
-		return nil
-	})
-	if err != nil {
-		return nil, fmt.Errorf("discover Git-DRS pointers: %w", err)
-	}
-	return pointers, nil
-}
-
-func readGitPointer(path, relativePath string) (GitPointer, bool, error) {
-	file, err := os.Open(path)
-	if err != nil {
-		return GitPointer{}, false, err
-	}
-	defer file.Close()
-	scanner := bufio.NewScanner(file)
-	scanner.Buffer(make([]byte, 1024), 4096)
-	var sha string
-	var size int64
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if strings.HasPrefix(line, "oid sha256:") {
-			sha = strings.ToLower(strings.TrimPrefix(line, "oid sha256:"))
-		}
-		if strings.HasPrefix(line, "size ") {
-			if _, err := fmt.Sscan(strings.TrimPrefix(line, "size "), &size); err != nil {
-				return GitPointer{}, false, fmt.Errorf("parse Git pointer size in %s: %w", relativePath, err)
-			}
-		}
-	}
-	if err := scanner.Err(); err != nil {
-		return GitPointer{}, false, err
-	}
-	if sha == "" {
-		return GitPointer{}, false, nil
-	}
-	if len(sha) != 64 {
-		return GitPointer{}, false, fmt.Errorf("invalid Git pointer SHA256 in %s", relativePath)
-	}
-	return GitPointer{Path: filepath.ToSlash(relativePath), SHA256: sha, Size: size}, true, nil
-}
-
 func readAuthoredDocumentReferences(path string, unmarshaller *jsonformat.Unmarshaller) ([][]byte, map[string]struct{}, int, error) {
 	rows := make([][]byte, 0)
 	sha256s := make(map[string]struct{})
@@ -320,8 +259,13 @@ func addSHA256Identifier(docRef *drpb.DocumentReference, sha string) {
 	})
 }
 
-func pointerDescription(pointer GitPointer) string {
-	return fmt.Sprintf("%s (%s)", pointer.SHA256, pointer.Path)
+func pointerDescription(sha string, pointers []gitinventory.Pointer) string {
+	paths := make([]string, 0, len(pointers))
+	for _, pointer := range pointers {
+		paths = append(paths, pointer.Path)
+	}
+	sort.Strings(paths)
+	return fmt.Sprintf("%s (%s)", sha, summarizeValues(paths))
 }
 
 func summarizeValues(values []string) string {

@@ -15,54 +15,6 @@ import (
 	cprb "github.com/google/fhir/go/proto/google/fhir/proto/r5/core/resources/bundle_and_contained_resource_go_proto"
 )
 
-func TestDiscoverGitPointersExcludesMetadataAndConfiguration(t *testing.T) {
-	repo := t.TempDir()
-	writePointer := func(path, sha string, size int64) {
-		t.Helper()
-		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-			t.Fatal(err)
-		}
-		contents := "version https://git-lfs.github.com/spec/v1\noid sha256:" + sha + "\nsize 42\n"
-		if err := os.WriteFile(path, []byte(contents), 0o644); err != nil {
-			t.Fatal(err)
-		}
-	}
-	dataSHA := strings.Repeat("a", 64)
-	writePointer(filepath.Join(repo, "data", "sample.bin"), dataSHA, 42)
-	writePointer(filepath.Join(repo, META_DIR, "DocumentReference.ndjson"), strings.Repeat("b", 64), 42)
-	writePointer(filepath.Join(repo, "CONFIG", "project.json"), strings.Repeat("c", 64), 42)
-
-	pointers, err := DiscoverGitPointers(repo)
-	if err != nil {
-		t.Fatalf("DiscoverGitPointers failed: %v", err)
-	}
-	if len(pointers) != 1 {
-		t.Fatalf("expected one data pointer, got %d", len(pointers))
-	}
-	got, ok := pointers[dataSHA]
-	if !ok || got.Path != "data/sample.bin" || got.Size != 42 {
-		t.Fatalf("unexpected pointer: %#v", got)
-	}
-}
-
-func TestDiscoverGitPointersRejectsDuplicateSHAAtDifferentPaths(t *testing.T) {
-	repo := t.TempDir()
-	sha := strings.Repeat("d", 64)
-	for _, name := range []string{"one.bin", "nested/two.bin"} {
-		path := filepath.Join(repo, name)
-		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-			t.Fatal(err)
-		}
-		contents := "version https://git-lfs.github.com/spec/v1\noid sha256:" + sha + "\nsize 1\n"
-		if err := os.WriteFile(path, []byte(contents), 0o644); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if _, err := DiscoverGitPointers(repo); err == nil || !strings.Contains(err.Error(), "appears at both") {
-		t.Fatalf("expected duplicate SHA error, got %v", err)
-	}
-}
-
 func TestAppendDocumentReferencesPreservesAuthoredRows(t *testing.T) {
 	path := filepath.Join(t.TempDir(), DOCUMENT_RESOURCE+NDJSON_EXT)
 	authored := []byte(`{"resourceType":"DocumentReference", "id":"authored", "identifier":[]}`)
