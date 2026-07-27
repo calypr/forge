@@ -48,7 +48,7 @@ func RunEmpty(projectId string, profileName string) (*sower.StatusResp, error) {
 }
 
 func RunPublish(token string, profileName string, gitRemoteName string) (*sower.StatusResp, error) {
-	repoRemoteConfig, err := remoteutil.LoadRemoteOrDefault("")
+	repoRemoteConfig, err := remoteutil.LoadRemoteOrDefault(gitRemoteName)
 	if err != nil {
 		return nil, err
 	}

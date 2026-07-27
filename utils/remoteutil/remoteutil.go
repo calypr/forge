@@ -33,6 +33,9 @@ func (r RemoteConfig) DispatchProjectID() string {
 	if organization == "" {
 		return project
 	}
+	if project == organization || strings.HasPrefix(project, organization+"-") {
+		return project
+	}
 	return organization + "-" + project
 }
 
