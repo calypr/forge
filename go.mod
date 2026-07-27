@@ -10,7 +10,7 @@ require (
 	github.com/bytedance/sonic v1.15.2
 	github.com/calypr/calypr-cli v0.0.4-0.20260628024636-bb44afe0c576
 	github.com/calypr/gecko v0.0.0-20260608202450-85aef064d4ae
-	github.com/calypr/git-drs v0.7.10-0.20260727225648-ffa9aea3d844
+	github.com/calypr/git-drs v0.7.10-0.20260727230035-6ec9aadcc4e8
 	github.com/calypr/syfon/apigen v0.2.9-0.20260616212227-547f1e22e1ac
 	github.com/calypr/syfon/client v0.3.1-0.20260616212227-547f1e22e1ac
 	github.com/cockroachdb/errors v1.11.3
