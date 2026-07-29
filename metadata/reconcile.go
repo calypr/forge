@@ -39,6 +39,7 @@ type ReconcileReport struct {
 	AuthoredRows           int
 	MatchedRows            int
 	GeneratedRows          int
+	AuthoredDRSIDsSynced   int
 	MetadataOnlySHA256     []string
 	AuthoredRowsWithoutSHA int
 }
@@ -180,7 +181,25 @@ func ReconcileGitPointers(ctx context.Context, options ReconcileOptions) (Reconc
 	if err := appendDocumentReferences(docRefPath, authored, generated); err != nil {
 		return report, err
 	}
+	// Authored metadata often carries a path or a legacy identifier in its
+	// first DocumentReference identifier. The Explorer's file-action column
+	// consumes that primary identifier as the Syfon DRS object ID. Reuse the
+	// SHA256-scoped Syfon result set above to synchronize only Git-matched rows;
+	// do not fall back to an unbounded DID/path scan across the project.
+	repaired, err := repairDocumentReferenceIdentifiersBySHA(
+		objects,
+		options.FHIRDirectory,
+		sc.Credential().APIEndpoint,
+		repoRemote.ProjectID,
+	)
+	if err != nil {
+		return report, fmt.Errorf("synchronize authored DocumentReference DRS identifiers: %w", err)
+	}
+	report.AuthoredDRSIDsSynced = repaired
 	report.GeneratedRows = len(generated)
+	if repaired > 0 {
+		log.Printf("Git/Syfon reconciliation: synchronized %d authored DocumentReference primary DRS identifiers by SHA256", repaired)
+	}
 	if len(report.MetadataOnlySHA256) > 0 {
 		log.Printf("WARNING: retained %d authored DocumentReference SHA256 values not present in Git: %s", len(report.MetadataOnlySHA256), summarizeValues(report.MetadataOnlySHA256))
 	}
