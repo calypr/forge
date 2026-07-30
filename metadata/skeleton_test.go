@@ -101,6 +101,39 @@ func TestTemplateDocRef(t *testing.T) {
 	}
 }
 
+func TestTemplateDocRefIdentityUsesProjectScopedSHA256(t *testing.T) {
+	first := &MetaObject{
+		ID:        "drs-a",
+		Name:      "shared-name.json",
+		Checksums: map[string]string{"sha-256": "AAAAAAAA"},
+	}
+	second := &MetaObject{
+		ID:        "drs-b",
+		Name:      "shared-name.json",
+		Checksums: map[string]string{"sha256": "bbbbbbbb"},
+	}
+	renamed := &MetaObject{
+		ID:        "drs-c",
+		Name:      "renamed.json",
+		Checksums: map[string]string{"sha-256": "aaaaaaaa"},
+	}
+
+	firstID := templateDocRef(first, "localhost", "test-proj", "rs-1").GetDocumentReference().GetId().GetValue()
+	secondID := templateDocRef(second, "localhost", "test-proj", "rs-1").GetDocumentReference().GetId().GetValue()
+	renamedID := templateDocRef(renamed, "localhost", "test-proj", "rs-1").GetDocumentReference().GetId().GetValue()
+	otherProjectID := templateDocRef(first, "localhost", "other-proj", "rs-1").GetDocumentReference().GetId().GetValue()
+
+	if firstID == secondID {
+		t.Fatal("different SHA256 values with the same basename produced the same DocumentReference ID")
+	}
+	if firstID != renamedID {
+		t.Fatal("the same SHA256 produced different DocumentReference IDs after a filename change")
+	}
+	if firstID == otherProjectID {
+		t.Fatal("the same SHA256 produced the same DocumentReference ID across projects")
+	}
+}
+
 func TestTemplateGitHubDocRef(t *testing.T) {
 	res := templateGitHubDocRef("README.md", 500, "localhost", "test-proj", "rs-1", "github.com/user/repo", "abcd123")
 	dr := res.GetDocumentReference()
