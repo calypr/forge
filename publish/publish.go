@@ -48,6 +48,9 @@ func RunEmpty(projectId string, profileName string) (*sower.StatusResp, error) {
 }
 
 func RunPublish(token string, profileName string, gitRemoteName string) (*sower.StatusResp, error) {
+	// Project scope comes from the repository's configured git-drs default remote.
+	// A Git remote is only used to find the repository URL to clone; it must not
+	// alter the Gen3 project or storage mapping.
 	repoRemoteConfig, err := remoteutil.LoadRemoteOrDefault("")
 	if err != nil {
 		return nil, err
@@ -117,7 +120,6 @@ func RunPublish(token string, profileName string, gitRemoteName string) (*sower.
 	}
 
 	dispatchArgs := &sower.DispatchArgs{
-		BucketName:     repoRemoteConfig.BucketName,
 		ProjectId:      repoRemoteConfig.DispatchProjectID(),
 		APIEndpoint:    sc.Credential().APIEndpoint,
 		Profile:        sc.Credential().Profile,

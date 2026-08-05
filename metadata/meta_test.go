@@ -15,6 +15,23 @@ import (
 	cprb "github.com/google/fhir/go/proto/google/fhir/proto/r5/core/resources/bundle_and_contained_resource_go_proto"
 )
 
+func TestAppendDocumentReferencesPreservesAuthoredRows(t *testing.T) {
+	path := filepath.Join(t.TempDir(), DOCUMENT_RESOURCE+NDJSON_EXT)
+	authored := []byte(`{"resourceType":"DocumentReference", "id":"authored", "identifier":[]}`)
+	generated := []byte(`{"resourceType":"DocumentReference","id":"generated"}`)
+	if err := appendDocumentReferences(path, [][]byte{authored}, [][]byte{generated}); err != nil {
+		t.Fatalf("appendDocumentReferences failed: %v", err)
+	}
+	contents, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := string(authored) + "\n" + string(generated) + "\n"
+	if string(contents) != want {
+		t.Fatalf("authored row changed:\nwant %q\n got %q", want, string(contents))
+	}
+}
+
 func TestProcessProjectRecordsPreservesExistingAndAddsMissing(t *testing.T) {
 	tmpDir := t.TempDir()
 

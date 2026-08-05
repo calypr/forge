@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -53,7 +54,9 @@ type MetaObject struct {
 	ControlledAccess []string
 }
 
-func CreateMeta(outPath string, profileName string, gitRemoteName string) error {
+// legacyCreateMeta is retained only for a future explicit migration command.
+// Normal imports use CreateMeta in reconcile.go and never perform DID/path repair.
+func legacyCreateMeta(outPath string, profileName string, gitRemoteName string) error {
 	sc, closer, err := client.NewGen3Client(profileName, g3client.WithClients(g3client.SyfonClient))
 	if err != nil {
 		return err
@@ -476,6 +479,7 @@ func listProjectObjectsByHashes(ctx context.Context, sc *client.ProfileClient, o
 		if end > len(hashes) {
 			end = len(hashes)
 		}
+		slog.Info("Syfon checksum lookup batch", "start", start+1, "end", end, "total", len(hashes))
 		records, err := bulkHashRecords(ctx, sc, hashes[start:end])
 		if err != nil {
 			return nil, fmt.Errorf("failed to bulk lookup records by hash: %w", err)
@@ -542,7 +546,7 @@ func listProjectObjectsByPaths(ctx context.Context, sc *client.ProfileClient, or
 		resp, err := sc.Gen3.SyfonClient().Index().List(ctx, syservices.ListRecordsOptions{
 			Organization: organization,
 			ProjectID:    projectID,
-			Path:         candidate,
+			URL:          candidate,
 			Limit:        25,
 		})
 		if err != nil {

@@ -1,8 +1,52 @@
 package gitutil
 
 import (
+	"strings"
 	"testing"
+
+	"github.com/go-git/go-git/v5"
+	"github.com/go-git/go-git/v5/config"
 )
+
+func TestResolveGitRemoteName(t *testing.T) {
+	newRepo := func(t *testing.T, remoteNames ...string) *git.Repository {
+		t.Helper()
+		repo, err := git.PlainInit(t.TempDir(), false)
+		if err != nil {
+			t.Fatalf("init repository: %v", err)
+		}
+		for _, name := range remoteNames {
+			if _, err := repo.CreateRemote(&config.RemoteConfig{
+				Name: name,
+				URLs: []string{"https://github.com/example/" + name + ".git"},
+			}); err != nil {
+				t.Fatalf("create remote %q: %v", name, err)
+			}
+		}
+		return repo
+	}
+
+	t.Run("prefers origin", func(t *testing.T) {
+		got, err := ResolveGitRemoteName(newRepo(t, "mirror", "origin"), "")
+		if err != nil || got != "origin" {
+			t.Fatalf("ResolveGitRemoteName() = %q, %v; want origin, nil", got, err)
+		}
+	})
+
+	t.Run("uses the only remote", func(t *testing.T) {
+		got, err := ResolveGitRemoteName(newRepo(t, "upstream"), "")
+		if err != nil || got != "upstream" {
+			t.Fatalf("ResolveGitRemoteName() = %q, %v; want upstream, nil", got, err)
+		}
+	})
+
+	t.Run("requires an override for multiple non-origin remotes", func(t *testing.T) {
+		_, err := ResolveGitRemoteName(newRepo(t, "mirror", "upstream"), "")
+		if err == nil || !strings.Contains(err.Error(), "specify one with --git-remote") {
+			t.Fatalf("ResolveGitRemoteName() error = %v; want a remote-selection error", err)
+		}
+	})
+}
 
 func TestTrimGitURLPrefix(t *testing.T) {
 	tests := []struct {

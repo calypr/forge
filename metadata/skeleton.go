@@ -47,9 +47,16 @@ func CreateResourceReference(resourceId string) *dtpb.Reference {
 func templateDocRef(obj *MetaObject, endpoint string, project string, rSID string) *cprb.ContainedResource {
 	baseEndpoint := normalizeEndpoint(endpoint)
 	name := obj.Name
+	identity := "name:" + name
+	if objectID := strings.TrimSpace(obj.ID); objectID != "" {
+		identity = "drs:" + objectID
+	}
+	if sha256 := strings.ToLower(strings.TrimSpace(checksumValue(obj.Checksums, "sha-256", "sha256"))); sha256 != "" {
+		identity = "sha256:" + sha256
+	}
 	id := uuid.NewSHA1(
 		uuid.NewSHA1(uuid.NameSpaceDNS, []byte(endpoint)),
-		fmt.Appendf(nil, "%s/%s", project, name),
+		fmt.Appendf(nil, "%s/%s", project, identity),
 	).String()
 
 	var extensions []*dtpb.Extension

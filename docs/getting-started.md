@@ -128,7 +128,7 @@ If you need to push to a different environment:
 ```bash
 # Specify which remote to use
 forge ping --remote dev
-forge publish ghp_token --remote staging
+forge publish staging ghp_token
 forge list --remote production
 ```
 

@@ -29,6 +29,29 @@ func TestGetRemoteOrDefault(t *testing.T) {
 	}
 }
 
+func TestDispatchProjectID(t *testing.T) {
+	tests := []struct {
+		name         string
+		organization string
+		project      string
+		want         string
+	}{
+		{name: "qualified from scope", organization: "HTAN_INT", project: "BForePC", want: "HTAN_INT-BForePC"},
+		{name: "already qualified", organization: "HTAN_INT", project: "HTAN_INT-BForePC", want: "HTAN_INT-BForePC"},
+		{name: "equal organization and project", organization: "gdc_mirror", project: "gdc_mirror", want: "gdc_mirror-gdc_mirror"},
+		{name: "no organization", project: "program-project", want: "program-project"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			remote := RemoteConfig{Organization: tt.organization, ProjectID: tt.project}
+			if got := remote.DispatchProjectID(); got != tt.want {
+				t.Fatalf("DispatchProjectID() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestLoadConfig(t *testing.T) {
 	dir := t.TempDir()
 	_, err := git.PlainInit(dir, false)
@@ -45,6 +68,7 @@ func TestLoadConfig(t *testing.T) {
 	for _, kv := range [][2]string{
 		{defaultRemoteKey, "origin"},
 		{"drs.remote.origin.project", "proj-a"},
+		{"drs.remote.origin.organization", "org-a"},
 		{"drs.remote.origin.endpoint", "https://example.org"},
 		{"drs.remote.origin.bucket", "bucket-a"},
 	} {
@@ -63,6 +87,9 @@ func TestLoadConfig(t *testing.T) {
 	}
 	if loaded.Remotes["origin"].ProjectID != "proj-a" {
 		t.Fatalf("unexpected project: %+v", loaded.Remotes["origin"])
+	}
+	if loaded.Remotes["origin"].Organization != "org-a" {
+		t.Fatalf("unexpected organization: %+v", loaded.Remotes["origin"])
 	}
 }
 
