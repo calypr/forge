@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -478,6 +479,7 @@ func listProjectObjectsByHashes(ctx context.Context, sc *client.ProfileClient, o
 		if end > len(hashes) {
 			end = len(hashes)
 		}
+		slog.Info("Syfon checksum lookup batch", "start", start+1, "end", end, "total", len(hashes))
 		records, err := bulkHashRecords(ctx, sc, hashes[start:end])
 		if err != nil {
 			return nil, fmt.Errorf("failed to bulk lookup records by hash: %w", err)

@@ -2,6 +2,7 @@ package meta
 
 import (
 	"fmt"
+	"log/slog"
 
 	"github.com/calypr/forge/metadata"
 	"github.com/spf13/cobra"
@@ -19,6 +20,7 @@ var MetaCmd = &cobra.Command{
 	Example: "forge meta init --remote dev",
 	Args:    cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
+		slog.Info("Forge metadata generation started", "profile", args[0], "git_ref", "HEAD", "output", outPath, "remote", gitRemote)
 		err := metadata.CreateMeta(outPath, args[0], gitRemote)
 		if err != nil {
 			return fmt.Errorf("could not create metadata: %w", err)

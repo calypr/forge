@@ -6,10 +6,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/calypr/calypr-cli/g3client"
 	"github.com/calypr/forge/client"
@@ -57,14 +59,32 @@ type ReconcileIssue struct {
 // CreateMeta preserves the historical Forge entrypoint while switching normal
 // imports to Git-SHA-driven reconciliation of the current checkout.
 func CreateMeta(outPath string, profileName string, gitRemoteName string) error {
-	_, err := ReconcileGitPointers(context.Background(), ReconcileOptions{
+	report, err := ReconcileGitPointers(context.Background(), ReconcileOptions{
 		RepositoryRoot: ".",
 		GitRef:         "HEAD",
 		FHIRDirectory:  outPath,
 		ProfileName:    profileName,
 		GitRemoteName:  gitRemoteName,
 	})
-	return err
+	if err != nil {
+		return err
+	}
+	slog.Info("Forge metadata generation complete",
+		"git_pointers", report.GitPointers,
+		"authored_rows", report.AuthoredRows,
+		"matched_rows", report.MatchedRows,
+		"generated_rows", report.GeneratedRows,
+		"missing_syfon", len(report.MissingSyfonRecords),
+		"metadata_only", len(report.MetadataOnlySHA256),
+	)
+	for i, issue := range report.MissingSyfonRecords {
+		slog.Warn("Git pointer has no scoped Syfon record; metadata was not generated",
+			"item", fmt.Sprintf("%d/%d", i+1, len(report.MissingSyfonRecords)),
+			"sha256", issue.SHA256,
+			"paths", strings.Join(issue.Paths, ", "),
+		)
+	}
+	return nil
 }
 
 // ReconcileGitPointers performs the normal metadata import reconciliation. Git
@@ -72,6 +92,7 @@ func CreateMeta(outPath string, profileName string, gitRemoteName string) error 
 // Existing DocumentReference rows are retained verbatim and only missing rows are
 // appended.
 func ReconcileGitPointers(ctx context.Context, options ReconcileOptions) (ReconcileReport, error) {
+	started := time.Now()
 	var report ReconcileReport
 	if strings.TrimSpace(options.RepositoryRoot) == "" {
 		return report, fmt.Errorf("repository root is required")
@@ -80,6 +101,8 @@ func ReconcileGitPointers(ctx context.Context, options ReconcileOptions) (Reconc
 		return report, fmt.Errorf("FHIR directory is required")
 	}
 
+	phaseStarted := time.Now()
+	slog.Info("Scanning Git snapshot for DRS pointers", "repository", options.RepositoryRoot, "git_ref", options.GitRef)
 	pointerRecords, err := gitinventory.List(ctx, gitinventory.Options{
 		RepositoryRoot:  options.RepositoryRoot,
 		Ref:             options.GitRef,
@@ -93,17 +116,22 @@ func ReconcileGitPointers(ctx context.Context, options ReconcileOptions) (Reconc
 	for _, pointer := range pointerRecords {
 		pointers[pointer.SHA256] = append(pointers[pointer.SHA256], pointer)
 	}
+	slog.Info("Git pointer scan complete", "pointers", len(pointerRecords), "unique_sha256", len(pointers), "elapsed", time.Since(phaseStarted))
 
+	phaseStarted = time.Now()
+	slog.Info("Connecting to Syfon", "profile", options.ProfileName)
 	sc, closer, err := client.NewGen3Client(options.ProfileName, g3client.WithClients(g3client.SyfonClient))
 	if err != nil {
 		return report, err
 	}
 	defer closer()
+	slog.Info("Syfon client ready", "endpoint", sc.Credential().APIEndpoint, "elapsed", time.Since(phaseStarted))
 
 	repoRemote, err := remoteutil.LoadRemoteOrDefault(options.GitRemoteName)
 	if err != nil {
 		return report, err
 	}
+	slog.Info("Repository scope resolved", "organization", repoRemote.Organization, "project", repoRemote.ProjectID)
 
 	marshaller, err := jsonformat.NewMarshaller(false, "", "", fver.R5)
 	if err != nil {
@@ -117,6 +145,8 @@ func ReconcileGitPointers(ctx context.Context, options ReconcileOptions) (Reconc
 	if err := os.MkdirAll(options.FHIRDirectory, 0o755); err != nil {
 		return report, fmt.Errorf("create FHIR directory: %w", err)
 	}
+	phaseStarted = time.Now()
+	slog.Info("Preparing authored FHIR metadata", "directory", options.FHIRDirectory)
 	researchStudyID, err := getResearchStudy(options.FHIRDirectory, repoRemote.ProjectID, sc.Credential().APIEndpoint, marshaller, unmarshaller)
 	if err != nil {
 		return report, err
@@ -129,16 +159,20 @@ func ReconcileGitPointers(ctx context.Context, options ReconcileOptions) (Reconc
 	}
 	report.AuthoredRows = len(authored)
 	report.AuthoredRowsWithoutSHA = noSHA
+	slog.Info("Authored FHIR metadata ready", "document_references", len(authored), "without_sha256", noSHA, "elapsed", time.Since(phaseStarted))
 
 	hashes := make([]string, 0, len(pointers))
 	for sha := range pointers {
 		hashes = append(hashes, sha)
 	}
 	sort.Strings(hashes)
+	phaseStarted = time.Now()
+	slog.Info("Looking up Git checksums in Syfon", "sha256", len(hashes), "organization", repoRemote.Organization, "project", repoRemote.ProjectID)
 	objects, err := listProjectObjectsByHashes(ctx, sc, repoRemote.Organization, repoRemote.ProjectID, hashes)
 	if err != nil {
 		return report, err
 	}
+	slog.Info("Syfon checksum lookup complete", "sha256", len(hashes), "scoped_records", len(objects), "elapsed", time.Since(phaseStarted))
 	objectsBySHA := make(map[string][]MetaObject, len(objects))
 	for _, object := range objects {
 		sha := strings.ToLower(checksumValue(object.Checksums, "sha-256", "sha256"))
@@ -209,6 +243,7 @@ func ReconcileGitPointers(ctx context.Context, options ReconcileOptions) (Reconc
 	}
 	report.AuthoredDRSIDsSynced = repaired
 	report.GeneratedRows = len(generated)
+	slog.Info("Git/Syfon reconciliation complete", "generated", report.GeneratedRows, "matched", report.MatchedRows, "missing", len(report.MissingSyfonRecords), "repaired", report.AuthoredDRSIDsSynced, "elapsed", time.Since(started))
 	if repaired > 0 {
 		log.Printf("Git/Syfon reconciliation: synchronized %d authored DocumentReference primary DRS identifiers by SHA256", repaired)
 	}
