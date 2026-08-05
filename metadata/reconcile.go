@@ -42,6 +42,16 @@ type ReconcileReport struct {
 	AuthoredDRSIDsSynced   int
 	MetadataOnlySHA256     []string
 	AuthoredRowsWithoutSHA int
+	MissingSyfonRecords    []ReconcileIssue
+	AmbiguousSyfonRecords  []ReconcileIssue
+}
+
+// ReconcileIssue identifies a Git checksum that could not be mapped to exactly
+// one Syfon record in the configured project scope.
+type ReconcileIssue struct {
+	SHA256       string
+	Paths        []string
+	SyfonRecords int
 }
 
 // CreateMeta preserves the historical Forge entrypoint while switching normal
@@ -138,8 +148,6 @@ func ReconcileGitPointers(ctx context.Context, options ReconcileOptions) (Reconc
 	}
 
 	generated := make([][]byte, 0)
-	missingSyfon := make([]string, 0)
-	ambiguousSyfon := make([]string, 0)
 	for _, sha := range hashes {
 		if _, exists := authoredSHA256[sha]; exists {
 			report.MatchedRows++
@@ -148,7 +156,7 @@ func ReconcileGitPointers(ctx context.Context, options ReconcileOptions) (Reconc
 		candidates := objectsBySHA[sha]
 		switch len(candidates) {
 		case 0:
-			missingSyfon = append(missingSyfon, pointerDescription(sha, pointers[sha]))
+			report.MissingSyfonRecords = append(report.MissingSyfonRecords, reconcileIssue(sha, pointers[sha], 0))
 			continue
 		case 1:
 			object := candidates[0]
@@ -165,11 +173,15 @@ func ReconcileGitPointers(ctx context.Context, options ReconcileOptions) (Reconc
 			}
 			generated = append(generated, encoded)
 		default:
-			ambiguousSyfon = append(ambiguousSyfon, fmt.Sprintf("%s (%d Syfon records)", pointerDescription(sha, pointers[sha]), len(candidates)))
+			report.AmbiguousSyfonRecords = append(report.AmbiguousSyfonRecords, reconcileIssue(sha, pointers[sha], len(candidates)))
 		}
 	}
-	if len(missingSyfon) > 0 || len(ambiguousSyfon) > 0 {
-		return report, fmt.Errorf("Git/Syfon reconciliation failed: %d Git SHA256 values have no scoped Syfon record (%s); %d are ambiguous (%s)", len(missingSyfon), summarizeValues(missingSyfon), len(ambiguousSyfon), summarizeValues(ambiguousSyfon))
+	if len(report.AmbiguousSyfonRecords) > 0 {
+		values := make([]string, 0, len(report.AmbiguousSyfonRecords))
+		for _, issue := range report.AmbiguousSyfonRecords {
+			values = append(values, fmt.Sprintf("%s (%d Syfon records)", issueDescription(issue), issue.SyfonRecords))
+		}
+		return report, fmt.Errorf("Git/Syfon reconciliation failed: %d Git SHA256 values are ambiguous (%s)", len(values), summarizeValues(values))
 	}
 
 	for sha := range authoredSHA256 {
@@ -207,6 +219,31 @@ func ReconcileGitPointers(ctx context.Context, options ReconcileOptions) (Reconc
 		log.Printf("WARNING: retained %d authored DocumentReference rows without a FILE_SHA256 identifier", report.AuthoredRowsWithoutSHA)
 	}
 	return report, nil
+}
+
+func reconcileIssue(sha string, pointers []gitinventory.Pointer, syfonRecords int) ReconcileIssue {
+	paths := make([]string, 0, len(pointers))
+	seen := make(map[string]struct{}, len(pointers))
+	for _, pointer := range pointers {
+		path := strings.TrimSpace(pointer.Path)
+		if path == "" {
+			continue
+		}
+		if _, ok := seen[path]; ok {
+			continue
+		}
+		seen[path] = struct{}{}
+		paths = append(paths, path)
+	}
+	sort.Strings(paths)
+	return ReconcileIssue{SHA256: sha, Paths: paths, SyfonRecords: syfonRecords}
+}
+
+func issueDescription(issue ReconcileIssue) string {
+	if len(issue.Paths) == 0 {
+		return issue.SHA256
+	}
+	return fmt.Sprintf("%s (%s)", issue.SHA256, strings.Join(issue.Paths, ", "))
 }
 
 // DiscoverGitPointers reads pointer files from a checkout. META and CONFIG are
