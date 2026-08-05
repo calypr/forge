@@ -130,7 +130,7 @@ var OutputCmd = &cobra.Command{
 }
 
 func init() {
-	PublishCmd.Flags().StringVarP(&publishGitRemote, "remote", "r", "", "git remote name for repository URL lookup (default: dev/origin per git config)")
+	PublishCmd.Flags().StringVar(&publishGitRemote, "git-remote", "", "Git remote name for the repository URL (default: origin, or the only configured remote)")
 	ListCmd.Flags().StringVarP(&listGitRemote, "remote", "r", "", "git remote name when you want to document repo context")
 	StatusCmd.Flags().StringVarP(&statusGitRemote, "remote", "r", "", "git remote name when you want to document repo context")
 	OutputCmd.Flags().StringVarP(&outputGitRemote, "remote", "r", "", "git remote name when you want to document repo context")

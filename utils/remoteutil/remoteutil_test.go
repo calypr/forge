@@ -38,6 +38,7 @@ func TestDispatchProjectID(t *testing.T) {
 	}{
 		{name: "qualified from scope", organization: "HTAN_INT", project: "BForePC", want: "HTAN_INT-BForePC"},
 		{name: "already qualified", organization: "HTAN_INT", project: "HTAN_INT-BForePC", want: "HTAN_INT-BForePC"},
+		{name: "equal organization and project", organization: "gdc_mirror", project: "gdc_mirror", want: "gdc_mirror-gdc_mirror"},
 		{name: "no organization", project: "program-project", want: "program-project"},
 	}
 

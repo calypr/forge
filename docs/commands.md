@@ -14,7 +14,7 @@ Create a metadata upload job for your project.
 
 **Usage:**
 ```bash
-forge publish <github_personal_access_token> [--remote REMOTE_NAME]
+forge publish <profile> <github_personal_access_token> [--git-remote GIT_REMOTE_NAME]
 ```
 
 **What it does:**
@@ -28,18 +28,19 @@ This is the main command you'll use. It dispatches a Sower job on the CALYPR pla
 
 **Example:**
 ```bash
-$ forge publish ghp_abc123def456
+$ forge publish dev ghp_abc123def456
 
-Using remote: production
 Uid: job-xyz789-abc123   Name: fhir_import_export   Status: Pending
 ```
 
 **Flags:**
-- `--remote`, `-r` - Specify which CALYPR remote to use (default: default_remote)
+- `--git-remote` - Git remote containing the repository to publish. Forge uses `origin` when present, otherwise the only configured Git remote. Use this only when the repository has multiple Git remotes and the desired one is not `origin`.
+
+The project scope comes from the repository's default git-drs remote. Bucket selection is resolved by the server from the Syfon mapping for that scope; Forge does not send a local bucket override.
 
 **Common errors:**
 - `Error: invalid token` - Your GitHub token is expired or missing the `repo` scope
-- `Error: repository has no origin` - Push your repository to GitHub first
+- `Error: no git remotes configured` - Push your repository to GitHub first
 - `Error: could not locate remote` - Run this in a git-drs initialized repository
 
 **When to use:** After pushing new or updated files via git-drs, run this to make them discoverable on CALYPR.
@@ -438,12 +439,12 @@ your-repo/
 
 All commands support these flags:
 
-- `--remote`, `-r` - Specify which git-drs remote to use (dev, staging, production, etc.)
 - `--help`, `-h` - Show help for a command
 
 **Examples:**
 ```bash
-forge publish ghp_token --remote staging
+forge publish staging ghp_token
+forge publish staging ghp_token --git-remote mirror
 forge ping --remote dev
 forge list --remote production
 ```

@@ -50,7 +50,7 @@ func ResolveGitRemoteName(repo *git.Repository, requested string) (string, error
 		names = append(names, remote.Config().Name)
 	}
 	sort.Strings(names)
-	return "", fmt.Errorf("multiple git remotes found (%s); specify one with --remote", strings.Join(names, ", "))
+	return "", fmt.Errorf("multiple git remotes found (%s); specify one with --git-remote", strings.Join(names, ", "))
 }
 
 func GetLastLocalCommit(repo *git.Repository) (plumbing.Hash, error) {
