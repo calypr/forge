@@ -11,7 +11,8 @@ import (
 )
 
 var (
-	publishGitRemote string
+	publishGitRemote        string
+	publishForceLoomRefresh bool
 )
 
 var PublishCmd = &cobra.Command{
@@ -22,7 +23,10 @@ var PublishCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		fmt.Printf("Using profile: %s\n", args[0])
 
-		resp, err := publish.RunPublish(args[1], args[0], publishGitRemote)
+		resp, err := publish.RunPublishWithOptions(args[1], args[0], publish.Options{
+			GitRemoteName:    publishGitRemote,
+			ForceLoomRefresh: publishForceLoomRefresh,
+		})
 		if err != nil {
 			return err
 		}
@@ -131,6 +135,7 @@ var OutputCmd = &cobra.Command{
 
 func init() {
 	PublishCmd.Flags().StringVar(&publishGitRemote, "git-remote", "", "Git remote name for the repository URL (default: origin, or the only configured remote)")
+	PublishCmd.Flags().BoolVar(&publishForceLoomRefresh, "force-loom-refresh", false, "Create a fresh Loom generation and rerun semantic profiling for the current Git commit")
 	ListCmd.Flags().StringVarP(&listGitRemote, "remote", "r", "", "git remote name when you want to document repo context")
 	StatusCmd.Flags().StringVarP(&statusGitRemote, "remote", "r", "", "git remote name when you want to document repo context")
 	OutputCmd.Flags().StringVarP(&outputGitRemote, "remote", "r", "", "git remote name when you want to document repo context")

@@ -8,7 +8,7 @@ require (
 	github.com/bmeg/jsonschema/v6 v6.0.4
 	github.com/bmeg/jsonschemagraph v0.0.4-0.20251017205345-236d2de9887c
 	github.com/bytedance/sonic v1.15.2
-	github.com/calypr/calypr-cli v0.0.4-0.20260628024636-bb44afe0c576
+	github.com/calypr/calypr-cli v0.0.4-0.20260812180750-95a0ca81cfd3
 	github.com/calypr/gecko v0.0.0-20260608202450-85aef064d4ae
 	github.com/calypr/git-drs v0.7.10-0.20260727230551-41211e8c328b
 	github.com/calypr/syfon/apigen v0.2.9-0.20260616212227-547f1e22e1ac

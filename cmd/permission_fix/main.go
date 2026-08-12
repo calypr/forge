@@ -35,7 +35,7 @@ func main() {
 	// 1. Initialize Gen3 Client
 	logger, closer := logs.New(profile, logs.WithConsole())
 	defer closer()
-	sc, err := g3client.NewGen3Interface(profile, logger, g3client.WithClients(g3client.IndexdClient))
+	sc, err := g3client.NewGen3Interface(profile, logger)
 	if err != nil {
 		log.Fatalf("Failed to initialize client: %v", err)
 	}
@@ -45,7 +45,10 @@ func main() {
 	newAuthz := []string{"/programs/Ellrott_Lab/projects/embedding_rotation"}
 
 	ctx := context.Background()
-	cred := sc.GetCredential()
+	cred := sc.Credentials().Current()
+	if cred == nil {
+		log.Fatalf("No credentials found for profile %q", profile)
+	}
 
 	// 2. Fetch current record to get the revision (rev)
 	fmt.Printf("Fetching current record for %s...\n", did)
