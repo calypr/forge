@@ -14,7 +14,7 @@ Create a metadata upload job for your project.
 
 **Usage:**
 ```bash
-forge publish <profile> <github_personal_access_token> [--git-remote GIT_REMOTE_NAME]
+forge publish <profile> <github_personal_access_token> [--git-remote GIT_REMOTE_NAME] [--force-loom-refresh]
 ```
 
 **What it does:**
@@ -35,6 +35,7 @@ Uid: job-xyz789-abc123   Name: fhir_import_export   Status: Pending
 
 **Flags:**
 - `--git-remote` - Git remote containing the repository to publish. Forge uses `origin` when present, otherwise the only configured Git remote. Use this only when the repository has multiple Git remotes and the desired one is not `origin`.
+- `--force-loom-refresh` - Create a fresh immutable Loom generation for the current Git commit, rerunning semantic profiling and dataframe materialization without requiring a new source commit.
 
 The project scope comes from the repository's default git-drs remote. Bucket selection is resolved by the server from the Syfon mapping for that scope; Forge does not send a local bucket override.
 

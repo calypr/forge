@@ -47,7 +47,16 @@ func RunEmpty(projectId string, profileName string) (*sower.StatusResp, error) {
 	return resp, nil
 }
 
+type Options struct {
+	GitRemoteName    string
+	ForceLoomRefresh bool
+}
+
 func RunPublish(token string, profileName string, gitRemoteName string) (*sower.StatusResp, error) {
+	return RunPublishWithOptions(token, profileName, Options{GitRemoteName: gitRemoteName})
+}
+
+func RunPublishWithOptions(token string, profileName string, options Options) (*sower.StatusResp, error) {
 	// Project scope comes from the repository's configured git-drs default remote.
 	// A Git remote is only used to find the repository URL to clone; it must not
 	// alter the Gen3 project or storage mapping.
@@ -60,7 +69,7 @@ func RunPublish(token string, profileName string, gitRemoteName string) (*sower.
 	if err != nil {
 		return nil, err
 	}
-	resolvedGitRemoteName, err := gitutil.ResolveGitRemoteName(repo, gitRemoteName)
+	resolvedGitRemoteName, err := gitutil.ResolveGitRemoteName(repo, options.GitRemoteName)
 	if err != nil {
 		return nil, err
 	}
@@ -120,14 +129,15 @@ func RunPublish(token string, profileName string, gitRemoteName string) (*sower.
 	}
 
 	dispatchArgs := &sower.DispatchArgs{
-		ProjectId:      repoRemoteConfig.DispatchProjectID(),
-		APIEndpoint:    sc.Credential().APIEndpoint,
-		Profile:        sc.Credential().Profile,
-		Method:         POD_PUT_METHOD,
-		GHPAccessToken: token,
-		GHUserName:     username,
-		GHRepoURL:      url,
-		GHCommitHash:   hash.String(),
+		ProjectId:        repoRemoteConfig.DispatchProjectID(),
+		APIEndpoint:      sc.Credential().APIEndpoint,
+		Profile:          sc.Credential().Profile,
+		Method:           POD_PUT_METHOD,
+		GHPAccessToken:   token,
+		GHUserName:       username,
+		GHRepoURL:        url,
+		GHCommitHash:     hash.String(),
+		ForceLoomRefresh: options.ForceLoomRefresh,
 	}
 
 	resp, err := sc.Gen3.SowerClient().DispatchJob(
